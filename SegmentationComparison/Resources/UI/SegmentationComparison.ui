@@ -58,16 +58,19 @@
          <string>Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.</string>
         </property>
         <property name="singleStep">
-         <double>0.100000000000000</double>
+         <double>1.000000000000000</double>
         </property>
         <property name="minimum">
-         <double>-100.000000000000000</double>
+         <double>0.000000000000000</double>
         </property>
         <property name="maximum">
-         <double>500.000000000000000</double>
+         <double>255.000000000000000</double>
         </property>
         <property name="value">
          <double>0.500000000000000</double>
+        </property>
+        <property name="tracking">
+         <bool>false</bool>
         </property>
        </widget>
       </item>

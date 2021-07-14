@@ -263,6 +263,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self._parameterNode.EndModify(wasModified)
 
+    self.autoUpdateThresholdSlider()
+
+  def autoUpdateThresholdSlider(self):
+  	if self.ui.imageThresholdSliderWidget.valueChanged:
+  		self.onApplyButton()
+
   def onApplyButton(self):
     """
     Run processing when user clicks "Apply" button.
@@ -340,7 +346,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       'InputVolume': inputVolume.GetID(),
       'OutputVolume': outputVolume.GetID(),
       'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above'
+      'ThresholdType' : 'Below'
       }
     cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
     # We don't need the CLI module node anymore, remove it to not clutter the scene with it
