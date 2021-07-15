@@ -1,13 +1,17 @@
 import os
 import unittest
 import logging
-import vtk, qt, ctk, slicer
+import vtk
+import qt
+import ctk
+import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 #
 # SegmentationComparison
 #
+
 
 class SegmentationComparison(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -16,10 +20,14 @@ class SegmentationComparison(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "SegmentationComparison"  # TODO: make this more human readable by adding spaces
-    self.parent.categories = ["Examples"]  # TODO: set categories (folders where the module shows up in the module selector)
-    self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
+    # TODO: make this more human readable by adding spaces
+    self.parent.title = "SegmentationComparison"
+    # TODO: set categories (folders where the module shows up in the module selector)
+    self.parent.categories = ["Examples"]
+    # TODO: add here list of module names that this module requires
+    self.parent.dependencies = []
+    # TODO: replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["John Doe (AnyWare Corp.)"]
     # TODO: update with short description of the module and a link to online module documentation
     self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
@@ -37,6 +45,7 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 #
 # Register sample data sets in Sample Data module
 #
+
 
 def registerSampleData():
   """
@@ -64,7 +73,7 @@ def registerSampleData():
     fileNames='SegmentationComparison1.nrrd',
     # Checksum to ensure file integrity. Can be computed by this command:
     #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
+    checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
     # This node name will be used when the data set is loaded
     nodeNames='SegmentationComparison1'
   )
@@ -78,7 +87,7 @@ def registerSampleData():
     # Download URL and target file name
     uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
     fileNames='SegmentationComparison2.nrrd',
-    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
+    checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
     # This node name will be used when the data set is loaded
     nodeNames='SegmentationComparison2'
   )
@@ -86,6 +95,7 @@ def registerSampleData():
 #
 # SegmentationComparisonWidget
 #
+
 
 class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   """Uses ScriptedLoadableModuleWidget base class, available at:
@@ -110,7 +120,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Load widget from .ui file (created by Qt Designer).
     # Additional widgets can be instantiated manually and added to self.layout.
-    uiWidget = slicer.util.loadUI(self.resourcePath('UI/SegmentationComparison.ui'))
+    uiWidget = slicer.util.loadUI(
+        self.resourcePath('UI/SegmentationComparison.ui'))
     self.layout.addWidget(uiWidget)
     self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -126,14 +137,19 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Connections
 
     # These connections ensure that we update parameter node when scene is closed
-    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
-    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+    self.addObserver(slicer.mrmlScene,
+                     slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
+    self.addObserver(slicer.mrmlScene,
+                     slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
-    self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.imageThresholdSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+    self.ui.inputSelector.connect(
+        "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.outputSelector.connect(
+        "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    self.ui.imageThresholdSliderWidget.connect(
+        "valueChanged(double)", self.updateParameterNodeFromGUI)
     # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
     # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
 
@@ -161,7 +177,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     Called each time the user opens a different module.
     """
     # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
-    self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+    self.removeObserver(
+        self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
   def onSceneStartClose(self, caller, event):
     """
@@ -189,9 +206,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Select default input nodes if nothing is selected yet to save a few clicks for the user
     if not self._parameterNode.GetNodeReference("InputVolume"):
-      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
+      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass(
+          "vtkMRMLScalarVolumeNode")
       if firstVolumeNode:
-        self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
+        self._parameterNode.SetNodeReferenceID(
+            "InputVolume", firstVolumeNode.GetID())
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -206,10 +225,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
     # those are reflected immediately in the GUI.
     if self._parameterNode is not None:
-      self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+      self.removeObserver(
+          self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
     self._parameterNode = inputParameterNode
     if self._parameterNode is not None:
-      self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+      self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent,
+                       self.updateGUIFromParameterNode)
 
     # Initial GUI update
     self.updateGUIFromParameterNode()
@@ -227,10 +248,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._updatingGUIFromParameterNode = True
 
     # Update node selectors and sliders
-    self.ui.inputSelector.setCurrentNode(self._parameterNode.GetNodeReference("InputVolume"))
-    self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
+    self.ui.inputSelector.setCurrentNode(
+        self._parameterNode.GetNodeReference("InputVolume"))
+    self.ui.outputSelector.setCurrentNode(
+        self._parameterNode.GetNodeReference("OutputVolume"))
     # self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
-    self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
+    self.ui.imageThresholdSliderWidget.value = float(
+        self._parameterNode.GetParameter("Threshold"))
     # self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
 
     # Update buttons states and tooltips
@@ -253,11 +277,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
 
-    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
+    # Modify all properties in a single batch
+    wasModified = self._parameterNode.StartModify()
 
-    self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
-    self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
-    self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
+    self._parameterNode.SetNodeReferenceID(
+        "InputVolume", self.ui.inputSelector.currentNodeID)
+    self._parameterNode.SetNodeReferenceID(
+        "OutputVolume", self.ui.outputSelector.currentNodeID)
+    self._parameterNode.SetParameter("Threshold", str(
+        self.ui.imageThresholdSliderWidget.value))
     # self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
     # self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
@@ -266,18 +294,36 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.autoUpdateThresholdSlider()
 
   def autoUpdateThresholdSlider(self):
-  	if self.ui.imageThresholdSliderWidget.valueChanged:
-  		self.onApplyButton()
+    if self.ui.imageThresholdSliderWidget.valueChanged:
+      self.onApplyButton()
+
+  def prepareOutputVolume(self, inputVolume):
+    # get name of input volume
+    # output volume name is that but with _thresholded added
+    outputVolumeName = inputVolume.GetName() + "_thresholded"
+    print(outputVolumeName)
+
+    outputVolume = slicer.mrmlScene.GetFirstNodeByName(outputVolumeName)
+
+    if outputVolume is None:
+      print("NO OUTPUT VOLUME EXISTS")
+      # if outputVolume is None:
+      # create output volume as copy of input volume
+      # display and center this new volume
+      #
+
+    # return outputVolume
 
   def onApplyButton(self):
     """
     Run processing when user clicks "Apply" button.
     """
     try:
+      #TODO - pass this into the process call
+      self.prepareOutputVolume(self.ui.inputSelector.currentNode())
 
       # Compute output
-      self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-        self.ui.imageThresholdSliderWidget.value, True)
+      self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(), self.ui.imageThresholdSliderWidget.value, True)
       '''
       # Compute inverted output (if needed)
       if self.ui.invertedOutputSelector.currentNode():
@@ -322,6 +368,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not parameterNode.GetParameter("Invert"):
       parameterNode.SetParameter("Invert", "false")
     '''
+
 
   def process(self, inputVolume, outputVolume, imageThreshold, showResult=True):
     """
