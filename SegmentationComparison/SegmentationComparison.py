@@ -5,6 +5,7 @@ import vtk
 import qt
 import ctk
 import slicer
+import signal
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
@@ -265,8 +266,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.ui.applyButton.toolTip = "Select input and output volume nodes"
       self.ui.applyButton.enabled = False
 
+    self.autoUpdateThresholdSlider()
+
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
+
+    
 
   def updateParameterNodeFromGUI(self, caller=None, event=None):
     """
@@ -291,11 +296,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self._parameterNode.EndModify(wasModified)
 
-    self.autoUpdateThresholdSlider()
+    
 
   def autoUpdateThresholdSlider(self):
     if self.ui.imageThresholdSliderWidget.valueChanged:
       self.onApplyButton()
+      print("slider was moved")
+    else: print("slider was not moved")
 
   def prepareOutputVolume(self, inputVolume):
     # get name of input volume
@@ -306,13 +313,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     outputVolume = slicer.mrmlScene.GetFirstNodeByName(outputVolumeName)
 
     if outputVolume is None:
-      print("NO OUTPUT VOLUME EXISTS")
-      # if outputVolume is None:
-      # create output volume as copy of input volume
-      # display and center this new volume
-      #
+      print("Creating thresholded volume")
 
-    # return outputVolume
+      outputVolume = slicer.mrmlScene.AddNode(slicer.vtkMRMLScalarVolumeNode())
+      outputVolume.CreateDefaultDisplayNodes()
+
+      outputVolume.SetName(outputVolumeName)
+
+    # TODO display and center this new volume
+
+    return outputVolume
 
   def onApplyButton(self):
     """
@@ -320,10 +330,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     try:
       #TODO - pass this into the process call
-      self.prepareOutputVolume(self.ui.inputSelector.currentNode())
+      outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
 
       # Compute output
-      self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(), self.ui.imageThresholdSliderWidget.value, True)
+      self.logic.process(self.ui.inputSelector.currentNode(), outputVolume, self.ui.imageThresholdSliderWidget.value, True)
       '''
       # Compute inverted output (if needed)
       if self.ui.invertedOutputSelector.currentNode():
