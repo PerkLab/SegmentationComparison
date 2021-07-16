@@ -112,6 +112,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
 
+
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
@@ -161,11 +162,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
+
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
     """
     self.removeObservers()
+
 
   def enter(self):
     """
@@ -173,6 +176,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     # Make sure parameter node exists and observed
     self.initializeParameterNode()
+
 
   def exit(self):
     """
@@ -182,12 +186,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.removeObserver(
         self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
 
+
   def onSceneStartClose(self, caller, event):
     """
     Called just before the scene is closed.
     """
     # Parameter node will be reset, do not use it anymore
     self.setParameterNode(None)
+
 
   def onSceneEndClose(self, caller, event):
     """
@@ -196,6 +202,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # If this module is shown while the scene is closed then recreate a new parameter node immediately
     if self.parent.isEntered:
       self.initializeParameterNode()
+
 
   def initializeParameterNode(self):
     """
@@ -213,6 +220,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       if firstVolumeNode:
         self._parameterNode.SetNodeReferenceID(
             "InputVolume", firstVolumeNode.GetID())
+
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -236,6 +244,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Initial GUI update
     self.updateGUIFromParameterNode()
+
 
   def updateGUIFromParameterNode(self, caller=None, event=None):
     """
@@ -270,7 +279,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
 
-    
 
   def updateParameterNodeFromGUI(self, caller=None, event=None):
     """
@@ -294,16 +302,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
 
     self._parameterNode.EndModify(wasModified)
-
     
+
   # TODO maybe not necessary, as it only calls onApplyButton()
   # this function is only really helpful for code readability
   def autoUpdateThresholdSlider(self):
     self.onApplyButton()
 
+
   def prepareOutputVolume(self, inputVolume):
-    # get name of input volume
-    # output volume name is that but with _thresholded added
+
+    # this occurs on initial load of the scene
+
     outputVolumeName = inputVolume.GetName() + "_thresholded"
     print("Saved threshold output in: " + outputVolumeName)
 
@@ -321,16 +331,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     return outputVolume
 
+
   def onApplyButton(self):
     """
     Run processing when user clicks "Apply" button.
     """
     try:
-      # create or use output volume
-      outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
+      
+      inputVolume = self.ui.inputSelector.currentNode()
 
-      # Compute output
-      self.logic.process(self.ui.inputSelector.currentNode(), outputVolume, self.ui.imageThresholdSliderWidget.value, True)
+      # prevents invalid volume error when loading the widget
+      if inputVolume is not None:
+        # create or use output volume
+        outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
+
+        self.logic.process(inputVolume, outputVolume, self.ui.imageThresholdSliderWidget.value, True)
+
       '''
       # Compute inverted output (if needed)
       if self.ui.invertedOutputSelector.currentNode():
