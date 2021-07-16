@@ -5,7 +5,6 @@ import vtk
 import qt
 import ctk
 import slicer
-import signal
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
@@ -147,10 +146,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # (in the selected parameter node).
     self.ui.inputSelector.connect(
         "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.outputSelector.connect(
-        "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+    # self.ui.outputSelector.connect(
+        # "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.updateParameterNodeFromGUI)
+    self.ui.imageThresholdSliderWidget.connect(
+        "valueChanged(double)", self.autoUpdateThresholdSlider)
     # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
     # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
 
@@ -251,8 +252,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Update node selectors and sliders
     self.ui.inputSelector.setCurrentNode(
         self._parameterNode.GetNodeReference("InputVolume"))
-    self.ui.outputSelector.setCurrentNode(
-        self._parameterNode.GetNodeReference("OutputVolume"))
+    # self.ui.outputSelector.setCurrentNode(
+        # self._parameterNode.GetNodeReference("OutputVolume"))
     # self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
     self.ui.imageThresholdSliderWidget.value = float(
         self._parameterNode.GetParameter("Threshold"))
@@ -265,8 +266,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     else:
       self.ui.applyButton.toolTip = "Select input and output volume nodes"
       self.ui.applyButton.enabled = False
-
-    self.autoUpdateThresholdSlider()
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -287,8 +286,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self._parameterNode.SetNodeReferenceID(
         "InputVolume", self.ui.inputSelector.currentNodeID)
-    self._parameterNode.SetNodeReferenceID(
-        "OutputVolume", self.ui.outputSelector.currentNodeID)
+    # self._parameterNode.SetNodeReferenceID(
+        # "OutputVolume", self.ui.outputSelector.currentNodeID)
     self._parameterNode.SetParameter("Threshold", str(
         self.ui.imageThresholdSliderWidget.value))
     # self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
@@ -297,18 +296,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode.EndModify(wasModified)
 
     
-
+  # TODO maybe not necessary, as it only calls onApplyButton()
+  # this function is only really helpful for code readability
   def autoUpdateThresholdSlider(self):
-    if self.ui.imageThresholdSliderWidget.valueChanged:
-      self.onApplyButton()
-      print("slider was moved")
-    else: print("slider was not moved")
+    self.onApplyButton()
 
   def prepareOutputVolume(self, inputVolume):
     # get name of input volume
     # output volume name is that but with _thresholded added
     outputVolumeName = inputVolume.GetName() + "_thresholded"
-    print(outputVolumeName)
+    print("Saved threshold output in: " + outputVolumeName)
 
     outputVolume = slicer.mrmlScene.GetFirstNodeByName(outputVolumeName)
 
@@ -329,7 +326,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     Run processing when user clicks "Apply" button.
     """
     try:
-      #TODO - pass this into the process call
+      # create or use output volume
       outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
 
       # Compute output
@@ -396,7 +393,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     import time
     startTime = time.time()
-    logging.info('Processing started')
+    # logging.info('Processing started')
 
     # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
     cliParams = {
