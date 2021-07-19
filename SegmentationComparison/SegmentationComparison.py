@@ -314,7 +314,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       # prevents invalid volume error when loading the widget
       if inputVolume is not None:
         # create or use output volume
-        outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
+        outputVolume = self.logic.prepareOutputVolume(self.ui.inputSelector.currentNode())
 
         self.logic.threshold(inputVolume, outputVolume, self.ui.imageThresholdSliderWidget.value, True)
 
@@ -325,46 +325,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
 
 
-  def prepareOutputVolume(self, inputVolume):
-
-    # this occurs on initial load of the scene
-
-    outputVolumeName = inputVolume.GetName() + "_thresholded"
-    print("Saved threshold output in: " + outputVolumeName)
-
-    outputVolume = slicer.mrmlScene.GetFirstNodeByName(outputVolumeName)
-
-    if outputVolume is None:
-      print("Creating thresholded volume")
-
-      outputVolume = slicer.mrmlScene.AddNode(slicer.vtkMRMLScalarVolumeNode())
-      outputVolume.CreateDefaultDisplayNodes()
-
-      outputVolume.SetName(outputVolumeName)
-
-    # TODO display and center this new volume
-
-    return outputVolume
-
-
-
   def onLoadButton(self):
     confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
-    if confirmation == True:
-
-      slicer.mrmlScene.Clear()
-
-      selectedDirectory = self._parameterNode.GetParameter("Directory")
-      print("Checking directory: " + selectedDirectory)
+    if confirmation == True: 
+      self.logic.loadVolumes(self._parameterNode.GetParameter("Directory"))
       
-      volumesInDirectory = list(f for f in os.listdir(selectedDirectory) if f.endswith(".nrrd"))
-      print("Found volumes: " + str(volumesInDirectory))
-
-      # Load the volumes
-      for volumeIndex, volumeFile in enumerate(volumesInDirectory):
-        #name = os.path.basename(volumeFile)
-        slicer.util.loadVolume(selectedDirectory + "/" + volumeFile)
 
 
 #
@@ -399,6 +365,44 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     '''
 
 
+  def loadVolumes(self, directory):
+    slicer.mrmlScene.Clear()
+
+    print("Checking directory: " + directory)
+    
+    volumesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".nrrd"))
+    print("Found volumes: " + str(volumesInDirectory))
+
+    # Load the volumes
+    for volumeIndex, volumeFile in enumerate(volumesInDirectory):
+      #name = os.path.basename(volumeFile)
+      slicer.util.loadVolume(directory + "/" + volumeFile)
+
+
+
+  def prepareOutputVolume(self, inputVolume):
+
+    # this occurs on initial load of the scene
+
+    outputVolumeName = inputVolume.GetName() + "_thresholded"
+    print("Saved threshold output in: " + outputVolumeName)
+
+    outputVolume = slicer.mrmlScene.GetFirstNodeByName(outputVolumeName)
+
+    if outputVolume is None:
+      print("Creating thresholded volume")
+
+      outputVolume = slicer.mrmlScene.AddNode(slicer.vtkMRMLScalarVolumeNode())
+      outputVolume.CreateDefaultDisplayNodes()
+
+      outputVolume.SetName(outputVolumeName)
+
+    # TODO display and center this new volume
+
+    return outputVolume
+
+
+
   def threshold(self, inputVolume, outputVolume, imageThreshold, showResult=True):
     """
     Run the processing algorithm.
@@ -430,6 +434,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     stopTime = time.time()
     logging.info('Thresholding completed in {0:.2f} seconds'.format(stopTime-startTime))
+
+
 
 #
 # SegmentationComparisonTest
