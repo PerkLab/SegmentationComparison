@@ -349,13 +349,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
 
   def onLoadButton(self):
-    selectedDirectory = self._parameterNode.GetParameter("Directory")
-    print("Checking directory: " + selectedDirectory)
-    
-    volumesInDirectory = list(f for f in os.listdir(selectedDirectory) if f.endswith(".nrrd"))
-    print("Found volumes: " + str(volumesInDirectory))
+    confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
-    # TODO attempt to load volumes here
+    if confirmation == True:
+
+      slicer.mrmlScene.Clear()
+
+      selectedDirectory = self._parameterNode.GetParameter("Directory")
+      print("Checking directory: " + selectedDirectory)
+      
+      volumesInDirectory = list(f for f in os.listdir(selectedDirectory) if f.endswith(".nrrd"))
+      print("Found volumes: " + str(volumesInDirectory))
+
+      # Load the volumes
+      for volumeIndex, volumeFile in enumerate(volumesInDirectory):
+        #name = os.path.basename(volumeFile)
+        slicer.util.loadVolume(selectedDirectory + "/" + volumeFile)
 
 
 #

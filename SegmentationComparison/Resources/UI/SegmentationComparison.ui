@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>279</width>
-    <height>324</height>
+    <width>487</width>
+    <height>237</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -17,6 +17,13 @@
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
+      <item row="0" column="1">
+       <widget class="ctkDirectoryButton" name="directorySelector">
+        <property name="caption">
+         <string>Select a directory containing the segmentations to compare</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="text">
@@ -24,10 +31,10 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="ctkDirectoryButton" name="directorySelector">
-        <property name="caption">
-         <string>Select a directory containing the segmentations to compare</string>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>Load volumes from folder:</string>
         </property>
        </widget>
       </item>
@@ -36,18 +43,17 @@
         <property name="enabled">
          <bool>false</bool>
         </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>23</height>
+         </size>
+        </property>
         <property name="toolTip">
          <string>Run the algorithm.</string>
         </property>
         <property name="text">
          <string>Load</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_4">
-        <property name="text">
-         <string>Load volumes from folder:</string>
         </property>
        </widget>
       </item>
