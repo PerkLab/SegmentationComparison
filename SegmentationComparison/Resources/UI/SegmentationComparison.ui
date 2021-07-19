@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>279</width>
-    <height>146</height>
+    <height>324</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -91,6 +91,13 @@
     </widget>
    </item>
    <item>
+    <widget class="ctkDirectoryButton" name="directorySelector">
+     <property name="caption">
+      <string>Select a directory containing the segmentations to compare</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
@@ -111,6 +118,11 @@
    <extends>QWidget</extends>
    <header>ctkCollapsibleButton.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ctkDirectoryButton</class>
+   <extends>QWidget</extends>
+   <header>ctkDirectoryButton.h</header>
   </customwidget>
   <customwidget>
    <class>ctkSliderWidget</class>

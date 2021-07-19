@@ -147,14 +147,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # (in the selected parameter node).
     self.ui.inputSelector.connect(
         "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    # self.ui.outputSelector.connect(
-        # "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.updateParameterNodeFromGUI)
+
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.autoUpdateThresholdSlider)
-    # self.ui.invertOutputCheckBox.connect("toggled(bool)", self.updateParameterNodeFromGUI)
-    # self.ui.invertedOutputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
+        
+    self.ui.directorySelector.connect(
+        "directoryChanged(const QString)", self.updateParameterNodeFromGUI)
+
+    self.ui.directorySelector.connect(
+        "directoryChanged(const QString)", self.onDirectoryChanged)
 
     # Buttons
     self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
@@ -261,19 +265,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Update node selectors and sliders
     self.ui.inputSelector.setCurrentNode(
         self._parameterNode.GetNodeReference("InputVolume"))
-    # self.ui.outputSelector.setCurrentNode(
-        # self._parameterNode.GetNodeReference("OutputVolume"))
-    # self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
+  
     self.ui.imageThresholdSliderWidget.value = float(
         self._parameterNode.GetParameter("Threshold"))
-    # self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
+
+    self.ui.directorySelector.directory = self._parameterNode.GetParameter("Directory")
 
     # Update buttons states and tooltips
-    if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-      self.ui.applyButton.toolTip = "Compute output volume"
+    if self._parameterNode.GetParameter("Directory"):
+      self.ui.applyButton.toolTip = "Load segmentation volumes"
       self.ui.applyButton.enabled = True
     else:
-      self.ui.applyButton.toolTip = "Select input and output volume nodes"
+      self.ui.applyButton.toolTip = "Select a directory containing segmentation volumes"
       self.ui.applyButton.enabled = False
 
     # All the GUI updates are done
@@ -294,12 +297,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self._parameterNode.SetNodeReferenceID(
         "InputVolume", self.ui.inputSelector.currentNodeID)
-    # self._parameterNode.SetNodeReferenceID(
-        # "OutputVolume", self.ui.outputSelector.currentNodeID)
+    
     self._parameterNode.SetParameter("Threshold", str(
         self.ui.imageThresholdSliderWidget.value))
-    # self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
-    # self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
+
+    self._parameterNode.SetParameter("Directory", str(
+        self.ui.directorySelector.directory))
 
     self._parameterNode.EndModify(wasModified)
     
@@ -309,6 +312,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def autoUpdateThresholdSlider(self):
     self.onApplyButton()
 
+  def onDirectoryChanged(self):
+    print("Directory changed")
+    print(self._parameterNode.GetParameter("Directory"))
 
   def prepareOutputVolume(self, inputVolume):
 
