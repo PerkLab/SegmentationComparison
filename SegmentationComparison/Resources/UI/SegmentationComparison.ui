@@ -18,37 +18,52 @@
      </property>
      <layout class="QFormLayout" name="formLayout_2">
       <item row="0" column="0">
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="label_2">
         <property name="text">
-         <string>Input volume:</string>
+         <string>Input Folder:</string>
         </property>
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="qMRMLNodeComboBox" name="inputSelector">
-        <property name="toolTip">
-         <string>Pick the input to the algorithm.</string>
-        </property>
-        <property name="nodeTypes">
-         <stringlist>
-          <string>vtkMRMLScalarVolumeNode</string>
-         </stringlist>
-        </property>
-        <property name="showChildNodeTypes">
-         <bool>false</bool>
-        </property>
-        <property name="addEnabled">
-         <bool>false</bool>
-        </property>
-        <property name="removeEnabled">
-         <bool>false</bool>
+       <widget class="ctkDirectoryButton" name="directorySelector">
+        <property name="caption">
+         <string>Select a directory containing the segmentations to compare</string>
         </property>
        </widget>
       </item>
+      <item row="4" column="1">
+       <widget class="QPushButton" name="loadButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="toolTip">
+         <string>Run the algorithm.</string>
+        </property>
+        <property name="text">
+         <string>Load</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>Load volumes from folder:</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="CollapsibleButton">
+     <property name="text">
+      <string>Controls</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
       <item row="2" column="0">
        <widget class="QLabel" name="label_3">
         <property name="text">
-         <string>Image threshold:</string>
+         <string>Volume threshold:</string>
         </property>
        </widget>
       </item>
@@ -74,27 +89,35 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Input volume: </string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="qMRMLNodeComboBox" name="inputSelector">
+        <property name="toolTip">
+         <string>Pick the input to the algorithm.</string>
+        </property>
+        <property name="nodeTypes">
+         <stringlist>
+          <string>vtkMRMLScalarVolumeNode</string>
+         </stringlist>
+        </property>
+        <property name="showChildNodeTypes">
+         <bool>false</bool>
+        </property>
+        <property name="addEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="removeEnabled">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="applyButton">
-     <property name="enabled">
-      <bool>false</bool>
-     </property>
-     <property name="toolTip">
-      <string>Run the algorithm.</string>
-     </property>
-     <property name="text">
-      <string>Apply</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="ctkDirectoryButton" name="directorySelector">
-     <property name="caption">
-      <string>Select a directory containing the segmentations to compare</string>
-     </property>
     </widget>
    </item>
    <item>

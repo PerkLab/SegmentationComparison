@@ -157,11 +157,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.directorySelector.connect(
         "directoryChanged(const QString)", self.updateParameterNodeFromGUI)
 
-    self.ui.directorySelector.connect(
-        "directoryChanged(const QString)", self.onDirectoryChanged)
-
     # Buttons
-    self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
+    self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -273,11 +270,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Update buttons states and tooltips
     if self._parameterNode.GetParameter("Directory"):
-      self.ui.applyButton.toolTip = "Load segmentation volumes"
-      self.ui.applyButton.enabled = True
+      self.ui.loadButton.toolTip = "Load segmentation volumes"
+      self.ui.loadButton.enabled = True
     else:
-      self.ui.applyButton.toolTip = "Select a directory containing segmentation volumes"
-      self.ui.applyButton.enabled = False
+      self.ui.loadButton.toolTip = "Select a directory containing segmentation volumes"
+      self.ui.loadButton.enabled = False
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -307,14 +304,26 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode.EndModify(wasModified)
     
 
-  # TODO maybe not necessary, as it only calls onApplyButton()
-  # this function is only really helpful for code readability
+  # Threshold the selected volume
   def autoUpdateThresholdSlider(self):
-    self.onApplyButton()
 
-  def onDirectoryChanged(self):
-    print("Directory changed")
-    print(self._parameterNode.GetParameter("Directory"))
+    try:
+      
+      inputVolume = self.ui.inputSelector.currentNode()
+
+      # prevents invalid volume error when loading the widget
+      if inputVolume is not None:
+        # create or use output volume
+        outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
+
+        self.logic.threshold(inputVolume, outputVolume, self.ui.imageThresholdSliderWidget.value, True)
+
+    except Exception as e:
+      slicer.util.errorDisplay("Failed to compute results: "+str(e))
+      import traceback
+      traceback.print_exc()
+
+
 
   def prepareOutputVolume(self, inputVolume):
 
@@ -338,33 +347,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     return outputVolume
 
 
-  def onApplyButton(self):
-    """
-    Run processing when user clicks "Apply" button.
-    """
-    try:
-      
-      inputVolume = self.ui.inputSelector.currentNode()
 
-      # prevents invalid volume error when loading the widget
-      if inputVolume is not None:
-        # create or use output volume
-        outputVolume = self.prepareOutputVolume(self.ui.inputSelector.currentNode())
+  def onLoadButton(self):
+    selectedDirectory = self._parameterNode.GetParameter("Directory")
+    print("Checking directory: " + selectedDirectory)
+    
+    volumesInDirectory = list(f for f in os.listdir(selectedDirectory) if f.endswith(".nrrd"))
+    print("Found volumes: " + str(volumesInDirectory))
 
-        self.logic.process(inputVolume, outputVolume, self.ui.imageThresholdSliderWidget.value, True)
-
-      '''
-      # Compute inverted output (if needed)
-      if self.ui.invertedOutputSelector.currentNode():
-        # If additional output volume is selected then result with inverted threshold is written there
-        self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-          self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
-      '''
-
-    except Exception as e:
-      slicer.util.errorDisplay("Failed to compute results: "+str(e))
-      import traceback
-      traceback.print_exc()
+    # TODO attempt to load volumes here
 
 
 #
@@ -399,7 +390,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     '''
 
 
-  def process(self, inputVolume, outputVolume, imageThreshold, showResult=True):
+  def threshold(self, inputVolume, outputVolume, imageThreshold, showResult=True):
     """
     Run the processing algorithm.
     Can be used without GUI widget.
@@ -429,7 +420,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.RemoveNode(cliNode)
 
     stopTime = time.time()
-    logging.info('Processing completed in {0:.2f} seconds'.format(stopTime-startTime))
+    logging.info('Thresholding completed in {0:.2f} seconds'.format(stopTime-startTime))
 
 #
 # SegmentationComparisonTest
@@ -486,13 +477,13 @@ class SegmentationComparisonTest(ScriptedLoadableModuleTest):
     logic = SegmentationComparisonLogic()
 
     # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
+    logic.threshold(inputVolume, outputVolume, threshold, True)
     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
     self.assertEqual(outputScalarRange[1], threshold)
 
     # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
+    logic.threshold(inputVolume, outputVolume, threshold, False)
     outputScalarRange = outputVolume.GetImageData().GetScalarRange()
     self.assertEqual(outputScalarRange[0], inputScalarRange[0])
     self.assertEqual(outputScalarRange[1], inputScalarRange[1])
