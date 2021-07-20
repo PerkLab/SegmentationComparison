@@ -8,6 +8,8 @@ import slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
+import numpy as np
+
 #
 # SegmentationComparison
 #
@@ -160,6 +162,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
 
+    self.ui.displayButton.connect('clicked(bool)', self.onDisplayButton)
+
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
@@ -272,8 +276,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self._parameterNode.GetParameter("Directory"):
       self.ui.loadButton.toolTip = "Load segmentation volumes"
       self.ui.loadButton.enabled = True
+
+      self.ui.loadButton.toolTip = "Group and display the segmentation(s)"
+      self.ui.loadButton.enabled = True
+
     else:
       self.ui.loadButton.toolTip = "Select a directory containing segmentation volumes"
+      self.ui.loadButton.enabled = False
+
+      self.ui.loadButton.toolTip = "Add volumes to the scene"
       self.ui.loadButton.enabled = False
 
     # All the GUI updates are done
@@ -332,6 +343,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.logic.loadVolumes(self._parameterNode.GetParameter("Directory"))
       
 
+  def onDisplayButton(self):
+    print("display button pressed")
+    self.logic.prepareDisplay()
+
 
 #
 # SegmentationComparisonLogic
@@ -373,10 +388,30 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     volumesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".nrrd"))
     print("Found volumes: " + str(volumesInDirectory))
 
-    # Load the volumes
+    volumeArrayXDim = 0
+    volumeArrayYDim = 0
+
+    self.volumesArray = np.zeros((0,0), dtype='object')
+
+    # this loop is for determining the dimensions of the array to store the volume references
     for volumeIndex, volumeFile in enumerate(volumesInDirectory):
-      #name = os.path.basename(volumeFile)
+      print(volumeFile)
+      name = str(os.path.basename(volumeFile))
+      # remove file extension
+      name = name.replace('.nrrd','')
+      modelNumber = int(name.split("_")[1])
+      sceneNumber = int(name.split("_")[3])
+
+      if modelNumber > volumeArrayXDim: volumeArrayXDim = modelNumber
+      if sceneNumber > volumeArrayYDim: volumeArrayYDim = sceneNumber
+
+      self.volumesArray.resize((volumeArrayXDim+1, volumeArrayYDim+1))
+
       slicer.util.loadVolume(directory + "/" + volumeFile)
+
+      self.volumesArray[modelNumber][sceneNumber] = name
+
+    print(self.volumesArray)
 
 
 
@@ -401,6 +436,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     return outputVolume
 
+
+  def prepareDisplay(self):
+    print("preparing display")
+    # if there are NOT volumes, return error message
+    
+    # if there are volumes, but they do not adhere to the naming scheme, return error
+
+    # if they adhere, make a 2d array of all the references
+    # prepare viewer according to the dimensions of the array (e.g. 3 or 4 models)
+    # display the first dimension of the array, each in a different view. 
 
 
   def threshold(self, inputVolume, outputVolume, imageThreshold, showResult=True):
