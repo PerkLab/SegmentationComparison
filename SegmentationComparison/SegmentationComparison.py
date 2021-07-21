@@ -348,7 +348,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       
 
   def onDisplayButton(self):
-    print("display button pressed")
+
     # Once "next" and "previous" buttons have been implemented,
     # this function will pass the corresponding value into prepareDisplay()
     # in order to change the group of volumes that are displayed
@@ -405,7 +405,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       # this loop is for determining the dimensions of the array to store the volume references
       for volumeIndex, volumeFile in enumerate(volumesInDirectory):
-        print(volumeFile)
         name = str(os.path.basename(volumeFile))
         # remove file extension
         name = name.replace('.nrrd','')
@@ -455,16 +454,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
   def prepareDisplay(self, selectedScene, thresholdValue):
-    print("preparing display")
 
     volumeIndex = 0
     for volume in self.volumesArray[selectedScene]:
-      print(volume)
       inputVolume = slicer.util.getFirstNodeByName(volume)
       outputVolume = self.prepareOutputVolume(inputVolume)
       outputVolumeName = outputVolume.GetName()
-
-      print(outputVolumeName)
 
       self.threshold(inputVolume, outputVolume, thresholdValue, True)
 
@@ -472,14 +467,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       volumeIndex += 1
 
-    print(self.thresholdedVolumesArray)
+    # print(self.thresholdedVolumesArray)
 
     # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
 
     # this portion of the function is very much WIP
     # it does not yet automatically display the volumes in their corresponding view
     # and it also causes strange errors when loading more files from a directory,
-    # because it is not clearing the scene properly
+    # because it is not clearing the scene enough in loadVolumes()
 
     numberOfColumns = 2
 
@@ -516,8 +511,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       outputVolume = slicer.util.getFirstNodeByName(volumeName)
       outputVolume.GetDisplayNode().AddViewNodeID(viewNode.GetID())
 
-      # this is not sufficient to actually display the volume
-      # i am still looking into this
+      # this closely matches the code linked above,
+      # but does not actually display the volumes
 
     slicer.app.setRenderPaused(False)
 
