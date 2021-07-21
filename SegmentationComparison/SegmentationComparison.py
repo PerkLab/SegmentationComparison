@@ -277,15 +277,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.ui.loadButton.toolTip = "Load segmentation volumes"
       self.ui.loadButton.enabled = True
 
-      self.ui.loadButton.toolTip = "Group and display the segmentation(s)"
-      self.ui.loadButton.enabled = True
+      self.ui.displayButton.toolTip = "Group and display the segmentation(s)"
+      self.ui.displayButton.enabled = True
 
     else:
       self.ui.loadButton.toolTip = "Select a directory containing segmentation volumes"
       self.ui.loadButton.enabled = False
 
-      self.ui.loadButton.toolTip = "Add volumes to the scene"
-      self.ui.loadButton.enabled = False
+      self.ui.displayButton.toolTip = "Add volumes to the scene"
+      self.ui.displayButton.enabled = False
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -319,7 +319,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def autoUpdateThresholdSlider(self):
 
     try:
-      
+      # TODO: replace this with the for models in scene loop in logic.prepareDisplay()
       inputVolume = self.ui.inputSelector.currentNode()
 
       # prevents invalid volume error when loading the widget
@@ -345,7 +345,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onDisplayButton(self):
     print("display button pressed")
-    self.logic.prepareDisplay()
+    self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
 
 #
@@ -393,25 +393,36 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     self.volumesArray = np.zeros((0,0), dtype='object')
 
-    # this loop is for determining the dimensions of the array to store the volume references
-    for volumeIndex, volumeFile in enumerate(volumesInDirectory):
-      print(volumeFile)
-      name = str(os.path.basename(volumeFile))
-      # remove file extension
-      name = name.replace('.nrrd','')
-      modelNumber = int(name.split("_")[1])
-      sceneNumber = int(name.split("_")[3])
+    try:
 
-      if modelNumber > volumeArrayXDim: volumeArrayXDim = modelNumber
-      if sceneNumber > volumeArrayYDim: volumeArrayYDim = sceneNumber
+      # this loop is for determining the dimensions of the array to store the volume references
+      for volumeIndex, volumeFile in enumerate(volumesInDirectory):
+        print(volumeFile)
+        name = str(os.path.basename(volumeFile))
+        # remove file extension
+        name = name.replace('.nrrd','')
 
-      self.volumesArray.resize((volumeArrayXDim+1, volumeArrayYDim+1))
+        # Splits name according to this naming convention:
+        # Scene_x_Model_y.nrrd
+        sceneNumber = int(name.split("_")[1])
+        modelNumber = int(name.split("_")[3])
+        
+        if sceneNumber > volumeArrayXDim: volumeArrayXDim = sceneNumber
+        if modelNumber > volumeArrayYDim: volumeArrayYDim = modelNumber
+        
+        self.volumesArray.resize((volumeArrayXDim+1, volumeArrayYDim+1))
 
-      slicer.util.loadVolume(directory + "/" + volumeFile)
+        slicer.util.loadVolume(directory + "/" + volumeFile)
 
-      self.volumesArray[modelNumber][sceneNumber] = name
+        self.volumesArray[sceneNumber][modelNumber] = name
 
-    print(self.volumesArray)
+      print(self.volumesArray)
+
+
+    except Exception as e:
+      slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
+      import traceback
+      traceback.print_exc()
 
 
 
@@ -437,15 +448,26 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return outputVolume
 
 
-  def prepareDisplay(self):
+  def prepareDisplay(self, selectedPair, thresholdValue):
     print("preparing display")
     # if there are NOT volumes, return error message
     
     # if there are volumes, but they do not adhere to the naming scheme, return error
 
-    # if they adhere, make a 2d array of all the references
-    # prepare viewer according to the dimensions of the array (e.g. 3 or 4 models)
-    # display the first dimension of the array, each in a different view. 
+
+    # find amount of models with len(volumesArray[selectedPair])
+
+    # 1. create the view that can hold the amount of models
+
+    for model in self.volumesArray[selectedPair]:
+      inputVolume = slicer.util.getFirstNodeByName(model)
+      outputVolume = self.prepareOutputVolume(inputVolume)
+      # OR 2. maybe i can create the view by adding 3d views on sequentially
+
+      self.threshold(inputVolume, outputVolume, thresholdValue, True)
+
+      # regardless, here I will display it
+      
 
 
   def threshold(self, inputVolume, outputVolume, imageThreshold, showResult=True):
