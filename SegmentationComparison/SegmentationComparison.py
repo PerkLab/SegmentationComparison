@@ -9,6 +9,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import numpy as np
+import math
 
 #
 # SegmentationComparison
@@ -147,6 +148,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
+
+    # This input selector will be removed soon
     self.ui.inputSelector.connect(
         "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
 
@@ -320,6 +323,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     try:
       # TODO: replace this with the for models in scene loop in logic.prepareDisplay()
+      # Then, I can get rid of the inputselector, as it is chosen automatically
       inputVolume = self.ui.inputSelector.currentNode()
 
       # prevents invalid volume error when loading the widget
@@ -345,6 +349,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onDisplayButton(self):
     print("display button pressed")
+    # Once "next" and "previous" buttons have been implemented,
+    # this function will pass the corresponding value into prepareDisplay()
+    # in order to change the group of volumes that are displayed
     self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
 
@@ -367,6 +374,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     Called when the logic class is instantiated. Can be used for initializing member variables.
     """
     ScriptedLoadableModuleLogic.__init__(self)
+    self.volumesArray = np.zeros((0,0), dtype='object')
+    self.thresholdedVolumesArray = np.zeros((0,0), dtype='object')
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -381,6 +390,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
   def loadVolumes(self, directory):
+    # TODO: This needs to delete more nodes in order to fully reset after creating the custom view
     slicer.mrmlScene.Clear()
 
     print("Checking directory: " + directory)
@@ -390,8 +400,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     volumeArrayXDim = 0
     volumeArrayYDim = 0
-
-    self.volumesArray = np.zeros((0,0), dtype='object')
 
     try:
 
@@ -416,7 +424,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         self.volumesArray[sceneNumber][modelNumber] = name
 
-      print(self.volumesArray)
+      self.thresholdedVolumesArray = self.volumesArray
 
 
     except Exception as e:
@@ -443,31 +451,76 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       outputVolume.SetName(outputVolumeName)
 
-    # TODO display and center this new volume
-
     return outputVolume
 
 
-  def prepareDisplay(self, selectedPair, thresholdValue):
+  def prepareDisplay(self, selectedScene, thresholdValue):
     print("preparing display")
-    # if there are NOT volumes, return error message
-    
-    # if there are volumes, but they do not adhere to the naming scheme, return error
 
-
-    # find amount of models with len(volumesArray[selectedPair])
-
-    # 1. create the view that can hold the amount of models
-
-    for model in self.volumesArray[selectedPair]:
-      inputVolume = slicer.util.getFirstNodeByName(model)
+    volumeIndex = 0
+    for volume in self.volumesArray[selectedScene]:
+      print(volume)
+      inputVolume = slicer.util.getFirstNodeByName(volume)
       outputVolume = self.prepareOutputVolume(inputVolume)
-      # OR 2. maybe i can create the view by adding 3d views on sequentially
+      outputVolumeName = outputVolume.GetName()
+
+      print(outputVolumeName)
 
       self.threshold(inputVolume, outputVolume, thresholdValue, True)
 
-      # regardless, here I will display it
+      self.thresholdedVolumesArray[selectedScene][volumeIndex] = outputVolumeName
+
+      volumeIndex += 1
+
+    print(self.thresholdedVolumesArray)
+
+    # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
+
+    # this portion of the function is very much WIP
+    # it does not yet automatically display the volumes in their corresponding view
+    # and it also causes strange errors when loading more files from a directory,
+    # because it is not clearing the scene properly
+
+    numberOfColumns = 2
+
+    numberOfVolumes = len(self.volumesArray[selectedScene])
+
+    numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
+
+    customLayoutId=567  # we pick a random id that is not used by others
+    slicer.app.setRenderPaused(True)
+
+    customLayout = '<layout type="vertical">'
+    viewIndex = 0
+    for rowIndex in range(numberOfRows):
+      customLayout += '<item><layout type="horizontal">'
+      for colIndex in range(numberOfColumns):
+
+        name = self.thresholdedVolumesArray[selectedScene][viewIndex] if viewIndex < numberOfVolumes else "compare " + str(viewIndex)
+        customLayout += '<item><view class="vtkMRMLViewNode" singletontag="'+name
+        customLayout += '"><property name="viewlabel" action="default">'+name+'</property></view></item>'
+        viewIndex += 1
+      customLayout += '</layout></item>'
       
+    customLayout += '</layout>'
+    if not slicer.app.layoutManager().layoutLogic().GetLayoutNode().SetLayoutDescription(customLayoutId, customLayout):
+        slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
+
+    slicer.app.layoutManager().setLayout(customLayoutId)
+
+    for volumeIndex, volumeName in enumerate(self.thresholdedVolumesArray[selectedScene]):
+
+      viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
+      viewNode.LinkedControlOn()
+
+      outputVolume = slicer.util.getFirstNodeByName(volumeName)
+      outputVolume.GetDisplayNode().AddViewNodeID(viewNode.GetID())
+
+      # this is not sufficient to actually display the volume
+      # i am still looking into this
+
+    slicer.app.setRenderPaused(False)
+
 
 
   def threshold(self, inputVolume, outputVolume, imageThreshold, showResult=True):
