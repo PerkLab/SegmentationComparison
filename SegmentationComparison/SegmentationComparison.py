@@ -485,7 +485,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
 
     customLayoutId=567  # we pick a random id that is not used by others
-    #slicer.app.setRenderPaused(True)
+    slicer.app.setRenderPaused(True)
 
     customLayout = '<layout type="vertical">'
     viewIndex = 0
@@ -507,36 +507,26 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     for volumeIndex, volumeName in enumerate(self.thresholdedVolumesArray[selectedScene]):
 
+      outputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
+
       viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
       viewNode.LinkedControlOn()
 
-      outputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
+      # https://www.slicer.org/wiki/Documentation/4.10/Modules/VolumeRendering#How_Tos
+      # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#show-volume-rendering-automatically-when-a-volume-is-loaded
+      # https://www.slicer.org/w/index.php/Documentation/4.3/Modules/VolumeRendering
 
-      
-      outputVolume.GetDisplayNode().SetViewNodeIDs(viewNode.GetID())
-      
-      outputVolume.CreateDefaultDisplayNodes()
-      
       logic = slicer.modules.volumerendering.logic()
       
-      displayNode = logic.CreateVolumeRenderingDisplayNode()
-      slicer.mrmlScene.AddNode(displayNode)
-      displayNode.UnRegister(logic)
-      
-      logic.UpdateDisplayNodeFromVolumeNode(displayNode, outputVolume)
+      displayNode = logic.CreateDefaultVolumeRenderingNodes(outputVolume)
 
-      outputVolume.AddAndObserveDisplayNodeID(displayNode.GetID())
-      
+      # if the following line is uncommented, nothing is displayed in the 3D views
+      # if the following line is commented, then all 3D views show the same volume 
       displayNode.SetViewNodeIDs(viewNode.GetID())
 
-      outputVolume.SetDisplayVisibility(True)
-      
-      
-      # this closely matches the code linked above,
-      # but does not actually display the volumes
+      displayNode.SetVisibility(True)
 
-    #slicer.app.setRenderPaused(False)
-    
+    slicer.app.setRenderPaused(False)
 
 
 
