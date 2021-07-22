@@ -374,7 +374,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     Called when the logic class is instantiated. Can be used for initializing member variables.
     """
     ScriptedLoadableModuleLogic.__init__(self)
-    self.volumesArray = np.zeros((0,0), dtype='object')
+    
     self.thresholdedVolumesArray = np.zeros((0,0), dtype='object')
 
   def setDefaultParameters(self, parameterNode):
@@ -400,6 +400,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     volumeArrayXDim = 0
     volumeArrayYDim = 0
+
+    self.volumesArray = np.zeros((0,0), dtype='object')
 
     try:
 
@@ -475,7 +477,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # it does not yet automatically display the volumes in their corresponding view
     # and it also causes strange errors when loading more files from a directory,
     # because it is not clearing the scene enough in loadVolumes()
-
+    
     numberOfColumns = 2
 
     numberOfVolumes = len(self.volumesArray[selectedScene])
@@ -483,7 +485,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
 
     customLayoutId=567  # we pick a random id that is not used by others
-    slicer.app.setRenderPaused(True)
+    #slicer.app.setRenderPaused(True)
 
     customLayout = '<layout type="vertical">'
     viewIndex = 0
@@ -508,13 +510,33 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
       viewNode.LinkedControlOn()
 
-      outputVolume = slicer.util.getFirstNodeByName(volumeName)
-      outputVolume.GetDisplayNode().AddViewNodeID(viewNode.GetID())
+      outputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
 
+      
+      outputVolume.GetDisplayNode().SetViewNodeIDs(viewNode.GetID())
+      
+      outputVolume.CreateDefaultDisplayNodes()
+      
+      logic = slicer.modules.volumerendering.logic()
+      
+      displayNode = logic.CreateVolumeRenderingDisplayNode()
+      slicer.mrmlScene.AddNode(displayNode)
+      displayNode.UnRegister(logic)
+      
+      logic.UpdateDisplayNodeFromVolumeNode(displayNode, outputVolume)
+
+      outputVolume.AddAndObserveDisplayNodeID(displayNode.GetID())
+      
+      displayNode.SetViewNodeIDs(viewNode.GetID())
+
+      outputVolume.SetDisplayVisibility(True)
+      
+      
       # this closely matches the code linked above,
       # but does not actually display the volumes
 
-    slicer.app.setRenderPaused(False)
+    #slicer.app.setRenderPaused(False)
+    
 
 
 
