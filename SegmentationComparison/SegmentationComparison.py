@@ -322,16 +322,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def autoUpdateThresholdSlider(self):
 
     try:
-      # TODO: replace this with the for models in scene loop in logic.prepareDisplay()
-      # Then, I can get rid of the inputselector, as it is chosen automatically
+      # TODO: auto-select this input volume
       inputVolume = self.ui.inputSelector.currentNode()
 
       # prevents invalid volume error when loading the widget
       if inputVolume is not None:
-        # create or use output volume
-        outputVolume = self.logic.prepareOutputVolume(self.ui.inputSelector.currentNode())
-
-        self.logic.threshold(inputVolume, outputVolume, self.ui.imageThresholdSliderWidget.value, True)
+        self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
 
     except Exception as e:
       slicer.util.errorDisplay("Failed to compute results: "+str(e))
@@ -375,7 +371,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
     
-    self.thresholdedVolumesArray = np.zeros((0,0), dtype='object')
+    self.volumesArray = np.zeros((0,0), dtype='object')
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -383,14 +379,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     if not parameterNode.GetParameter("Threshold"):
       parameterNode.SetParameter("Threshold", "0")
-    '''
-    if not parameterNode.GetParameter("Invert"):
-      parameterNode.SetParameter("Invert", "false")
-    '''
 
 
   def loadVolumes(self, directory):
-    # TODO: This needs to delete more nodes in order to fully reset after creating the custom view
     slicer.mrmlScene.Clear()
 
     print("Checking directory: " + directory)
@@ -400,8 +391,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     volumeArrayXDim = 0
     volumeArrayYDim = 0
-
-    self.volumesArray = np.zeros((0,0), dtype='object')
 
     try:
 
@@ -425,34 +414,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         self.volumesArray[sceneNumber][modelNumber] = name
 
-      self.thresholdedVolumesArray = self.volumesArray
-
 
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
       import traceback
       traceback.print_exc()
 
-
-
-  def prepareOutputVolume(self, inputVolume):
-
-    # this occurs on initial load of the scene
-
-    outputVolumeName = inputVolume.GetName() + "_thresholded"
-    print("Saved threshold output in: " + outputVolumeName)
-
-    outputVolume = slicer.mrmlScene.GetFirstNodeByName(outputVolumeName)
-
-    if outputVolume is None:
-      print("Creating thresholded volume")
-
-      outputVolume = slicer.mrmlScene.AddNode(slicer.vtkMRMLScalarVolumeNode())
-      outputVolume.CreateDefaultDisplayNodes()
-
-      outputVolume.SetName(outputVolumeName)
-
-    return outputVolume
 
 
   # TODO: load transforms from file to correct the orientation of the spine
@@ -489,7 +456,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
       displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
-    upper = min(300, level + window/2)
+    # TODO: dial in the values of this transfer function a little better
+    upper = min(255, level + window/2)
     lower = max(0, level - window/2)
 
     p0 = lower
@@ -500,8 +468,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     opacityTransferFunction = vtk.vtkPiecewiseFunction()
     opacityTransferFunction.AddPoint(p0, 0.0)
     opacityTransferFunction.AddPoint(p1, 0.2)
-    opacityTransferFunction.AddPoint(p2, 0.4)
-    opacityTransferFunction.AddPoint(p3, 0.5)
+    opacityTransferFunction.AddPoint(p2, 0.6)
+    opacityTransferFunction.AddPoint(p3, 1)
 
     colorTransferFunction = vtk.vtkColorTransferFunction()
     colorTransferFunction.AddRGBPoint(p0, 0.20, 0.00, 0.00)
@@ -510,7 +478,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     colorTransferFunction.AddRGBPoint(p3, 1.00, 1.00, 0.90)
 
     # The property describes how the data will look
-
     volumeProperty = displayNode.GetVolumePropertyNode().GetVolumeProperty()
     volumeProperty.SetColor(colorTransferFunction)
     volumeProperty.SetScalarOpacity(opacityTransferFunction)
@@ -520,34 +487,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return displayNode
 
 
-
-  def prepareDisplay(self, selectedScene, thresholdValue):
-
-    volumeIndex = 0
-    for volume in self.volumesArray[selectedScene]:
-      inputVolume = slicer.util.getFirstNodeByName(volume)
-      outputVolume = self.prepareOutputVolume(inputVolume)
-      outputVolumeName = outputVolume.GetName()
-
-      self.threshold(inputVolume, outputVolume, thresholdValue, True)
-
-      self.thresholdedVolumesArray[selectedScene][volumeIndex] = outputVolumeName
-
-      volumeIndex += 1
-
-    # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
-
-    # this portion of the function is very much WIP
-    # it does not yet automatically display the volumes in their corresponding view
-    # and it also causes strange errors when loading more files from a directory,
-    # because it is not clearing the scene enough in loadVolumes()
-    
-    numberOfColumns = 2
-
-    numberOfVolumes = len(self.volumesArray[selectedScene])
-
-    numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
-
+  def setCustomView(self, numberOfRows, numberOfColumns, volumesToDisplay):
     customLayoutId=567  # we pick a random id that is not used by others
     slicer.app.setRenderPaused(True)
 
@@ -557,7 +497,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       customLayout += '<item><layout type="horizontal">'
       for colIndex in range(numberOfColumns):
 
-        name = self.thresholdedVolumesArray[selectedScene][viewIndex] if viewIndex < numberOfVolumes else "compare " + str(viewIndex)
+        name = volumesToDisplay[viewIndex]
         customLayout += '<item><view class="vtkMRMLViewNode" singletontag="'+name
         customLayout += '"><property name="viewlabel" action="default">'+name+'</property></view></item>'
         viewIndex += 1
@@ -568,10 +508,24 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
 
     slicer.app.layoutManager().setLayout(customLayoutId)
+    slicer.app.setRenderPaused(False)
 
-    for volumeIndex, volumeName in enumerate(self.thresholdedVolumesArray[selectedScene]):
 
-      outputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
+  def prepareDisplay(self, selectedScene, thresholdValue):
+
+    # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
+    
+    numberOfColumns = 2
+    numberOfVolumes = len(self.volumesArray[selectedScene])
+    numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
+    volumesToDisplay = self.volumesArray[selectedScene]
+
+    self.setCustomView(numberOfRows, numberOfColumns, volumesToDisplay)
+
+    # iterate through each volume, and display it in its own corresponding view
+    for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
+
+      volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
 
       viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
       viewNode.LinkedControlOn()
@@ -580,51 +534,21 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#show-volume-rendering-automatically-when-a-volume-is-loaded
       # https://www.slicer.org/w/index.php/Documentation/4.3/Modules/VolumeRendering
 
-      displayNode = self.setVolumeRenderingProperty(outputVolume,100,0)
-
+      displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
       displayNode.SetVisibility(True)
 
-      self.centerAndRotateCamera(outputVolume, viewNode)
+      self.centerAndRotateCamera(volume, viewNode)
 
       displayNode.SetViewNodeIDs(viewNode.GetID())
 
-    slicer.app.setRenderPaused(False)
 
 
+  def threshold(self, inputVolume, imageThreshold, showResult=True):
 
-  def threshold(self, inputVolume, outputVolume, imageThreshold, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
+    if not inputVolume:
+      raise ValueError("Input volume is invalid")
 
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
-
-    import time
-    startTime = time.time()
-    # logging.info('Processing started')
-
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
-
-    stopTime = time.time()
-    logging.info('Thresholding completed in {0:.2f} seconds'.format(stopTime-startTime))
-
-
+    self.setVolumeRenderingProperty(inputVolume,50,imageThreshold)
 
 #
 # SegmentationComparisonTest
