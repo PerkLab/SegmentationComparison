@@ -456,7 +456,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
   # TODO: load transforms from file to correct the orientation of the spine
-  def centerAndRotateCamera(self, volume, viewIndex):
+  def centerAndRotateCamera(self, volume, viewNode):
     # Compute the RAS coordinates of the center of the volume
     imageData = volume.GetImageData() 
     volumeCenter_Ijk = imageData.GetCenter()
@@ -467,10 +467,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     volumeCenter_Ras = volumeCenter_Ras[:3]
 
     # Center camera on the volume, rotate camera so top is superior, position camera behind volume
-    layoutManager = slicer.app.layoutManager()
-    threeDView = layoutManager.threeDWidget(viewIndex+1).threeDView()
-    viewNode = threeDView.mrmlViewNode()
-
     camerasLogic = slicer.modules.cameras.logic()
     cameraNode = camerasLogic.GetViewActiveCameraNode(viewNode)
     camera = cameraNode.GetCamera()
@@ -586,17 +582,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       displayNode = self.setVolumeRenderingProperty(outputVolume,100,0)
 
-      #logic = slicer.modules.volumerendering.logic()
-      
-      #displayNode = logic.CreateDefaultVolumeRenderingNodes(outputVolume)
-
-      # if the following line is uncommented, nothing is displayed in the 3D views
-      # if the following line is commented, then all 3D views show the same volume 
-      displayNode.SetViewNodeIDs(viewNode.GetID())
-
       displayNode.SetVisibility(True)
 
-      self.centerAndRotateCamera(outputVolume, volumeIndex)
+      self.centerAndRotateCamera(outputVolume, viewNode)
+
+      displayNode.SetViewNodeIDs(viewNode.GetID())
 
     slicer.app.setRenderPaused(False)
 
