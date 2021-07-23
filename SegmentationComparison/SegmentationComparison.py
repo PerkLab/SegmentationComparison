@@ -455,6 +455,76 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return outputVolume
 
 
+  # TODO: load transforms from file to correct the orientation of the spine
+  def centerAndRotateCamera(self, volume, viewIndex):
+    # Compute the RAS coordinates of the center of the volume
+    imageData = volume.GetImageData() 
+    volumeCenter_Ijk = imageData.GetCenter()
+
+    IjkToRasMatrix = vtk.vtkMatrix4x4()
+    volume.GetIJKToRASMatrix(IjkToRasMatrix)
+    volumeCenter_Ras = np.array(IjkToRasMatrix.MultiplyFloatPoint(np.append(volumeCenter_Ijk, [1])))
+    volumeCenter_Ras = volumeCenter_Ras[:3]
+
+    # Center camera on the volume, rotate camera so top is superior, position camera behind volume
+    layoutManager = slicer.app.layoutManager()
+    threeDView = layoutManager.threeDWidget(viewIndex+1).threeDView()
+    viewNode = threeDView.mrmlViewNode()
+
+    camerasLogic = slicer.modules.cameras.logic()
+    cameraNode = camerasLogic.GetViewActiveCameraNode(viewNode)
+    camera = cameraNode.GetCamera()
+
+    camera.SetFocalPoint(volumeCenter_Ras)
+    camera.SetViewUp([0, 0, 1])
+    camera.SetPosition(volumeCenter_Ras + np.array([0, -800, 0]))
+
+
+
+  # Manually define volume property for volume rendering
+  def setVolumeRenderingProperty(self, volumeNode, window, level):
+
+    vrLogic = slicer.modules.volumerendering.logic()
+    displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
+
+    if displayNode is None:
+
+      volumeNode.CreateDefaultDisplayNodes()
+      vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
+      displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
+
+    upper = min(300, level + window/2)
+    lower = max(0, level - window/2)
+
+    p0 = lower
+    p1 = lower + (upper - lower)*0.15
+    p2 = lower + (upper - lower)*0.4
+    p3 = upper
+
+    opacityTransferFunction = vtk.vtkPiecewiseFunction()
+    opacityTransferFunction.AddPoint(p0, 0.0)
+    opacityTransferFunction.AddPoint(p1, 0.2)
+    opacityTransferFunction.AddPoint(p2, 0.4)
+    opacityTransferFunction.AddPoint(p3, 0.5)
+
+    colorTransferFunction = vtk.vtkColorTransferFunction()
+    colorTransferFunction.AddRGBPoint(p0, 0.20, 0.00, 0.00)
+    colorTransferFunction.AddRGBPoint(p1, 0.65, 0.45, 0.15)
+    colorTransferFunction.AddRGBPoint(p2, 0.85, 0.75, 0.55)
+    colorTransferFunction.AddRGBPoint(p3, 1.00, 1.00, 0.90)
+
+    # The property describes how the data will look
+
+    volumeProperty = displayNode.GetVolumePropertyNode().GetVolumeProperty()
+    volumeProperty.SetColor(colorTransferFunction)
+    volumeProperty.SetScalarOpacity(opacityTransferFunction)
+    volumeProperty.ShadeOn()
+    volumeProperty.SetInterpolationTypeToLinear()
+
+    return displayNode
+
+
+
   def prepareDisplay(self, selectedScene, thresholdValue):
 
     volumeIndex = 0
@@ -468,8 +538,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       self.thresholdedVolumesArray[selectedScene][volumeIndex] = outputVolumeName
 
       volumeIndex += 1
-
-    # print(self.thresholdedVolumesArray)
 
     # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
 
@@ -516,15 +584,19 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#show-volume-rendering-automatically-when-a-volume-is-loaded
       # https://www.slicer.org/w/index.php/Documentation/4.3/Modules/VolumeRendering
 
-      logic = slicer.modules.volumerendering.logic()
+      displayNode = self.setVolumeRenderingProperty(outputVolume,100,0)
+
+      #logic = slicer.modules.volumerendering.logic()
       
-      displayNode = logic.CreateDefaultVolumeRenderingNodes(outputVolume)
+      #displayNode = logic.CreateDefaultVolumeRenderingNodes(outputVolume)
 
       # if the following line is uncommented, nothing is displayed in the 3D views
       # if the following line is commented, then all 3D views show the same volume 
       displayNode.SetViewNodeIDs(viewNode.GetID())
 
       displayNode.SetVisibility(True)
+
+      self.centerAndRotateCamera(outputVolume, volumeIndex)
 
     slicer.app.setRenderPaused(False)
 
