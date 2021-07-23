@@ -167,9 +167,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.directorySelector.connect("directoryChanged(const QString)", self.onDirectorySelected)
 
-    #todo: Set previously selected path, if there is any
-
-
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
 
@@ -444,7 +441,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
     if displayNode is None:
-
       volumeNode.CreateDefaultDisplayNodes()
       vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
       displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
@@ -532,7 +528,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       self.centerAndRotateCamera(volume, viewNode)
 
-      displayNode.SetViewNodeIDs(viewNode.GetID())
+      displayNode.SetViewNodeIDs([viewNode.GetID()])
 
 
 
