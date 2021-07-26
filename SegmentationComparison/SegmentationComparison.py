@@ -105,6 +105,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
+  LAST_PATH_SETTING="SegmentationComparison/LastSelectedPath"
+
   def __init__(self, parent=None):
     """
     Called when the user opens the module the first time and the widget is initialized.
@@ -158,9 +160,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.autoUpdateThresholdSlider)
-        
-    self.ui.directorySelector.connect(
-        "directoryChanged(const QString)", self.updateParameterNodeFromGUI)
+
+    lastPath = slicer.util.settingsValue(self.LAST_PATH_SETTING, "")
+    if lastPath != "":
+      self.ui.directorySelector.directory = lastPath
+
+    self.ui.directorySelector.connect("directoryChanged(const QString)", self.onDirectorySelected)
 
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
@@ -170,6 +175,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
+
+  def onDirectorySelected(self, selectedPath):
+    settings = qt.QSettings()
+    settings.setValue(self.LAST_PATH_SETTING, selectedPath)
+    self.updateParameterNodeFromGUI()
 
   def cleanup(self):
     """
@@ -273,23 +283,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.imageThresholdSliderWidget.value = float(
         self._parameterNode.GetParameter("Threshold"))
 
-    self.ui.directorySelector.directory = self._parameterNode.GetParameter("Directory")
-
-    # Update buttons states and tooltips
-    if self._parameterNode.GetParameter("Directory"):
-      self.ui.loadButton.toolTip = "Load segmentation volumes"
-      self.ui.loadButton.enabled = True
-
-      self.ui.displayButton.toolTip = "Group and display the segmentation(s)"
-      self.ui.displayButton.enabled = True
-
-    else:
-      self.ui.loadButton.toolTip = "Select a directory containing segmentation volumes"
-      self.ui.loadButton.enabled = False
-
-      self.ui.displayButton.toolTip = "Add volumes to the scene"
-      self.ui.displayButton.enabled = False
-
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
 
@@ -311,9 +304,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     
     self._parameterNode.SetParameter("Threshold", str(
         self.ui.imageThresholdSliderWidget.value))
-
-    self._parameterNode.SetParameter("Directory", str(
-        self.ui.directorySelector.directory))
 
     self._parameterNode.EndModify(wasModified)
     
@@ -340,7 +330,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
     if confirmation == True: 
-      self.logic.loadVolumes(self._parameterNode.GetParameter("Directory"))
+      self.logic.loadVolumes(self.ui.directorySelector.directory)
       
 
   def onDisplayButton(self):
@@ -451,7 +441,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
     if displayNode is None:
-
       volumeNode.CreateDefaultDisplayNodes()
       vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
       displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
@@ -539,7 +528,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       self.centerAndRotateCamera(volume, viewNode)
 
-      displayNode.SetViewNodeIDs(viewNode.GetID())
+      displayNode.SetViewNodeIDs([viewNode.GetID()])
 
 
 
