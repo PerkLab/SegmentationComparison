@@ -331,6 +331,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     if confirmation == True: 
       self.logic.loadVolumes(self.ui.directorySelector.directory)
+      self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
       
 
   def onDisplayButton(self):
@@ -371,6 +372,60 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       parameterNode.SetParameter("Threshold", "0")
 
 
+  def loadAndApplyTransforms(self, directory):
+    transformsInDirectory = list(f for f in os.listdir(directory) if f.endswith(".h5"))
+
+    if transformsInDirectory != []:
+      print("Found transforms: " + str(len(transformsInDirectory)))
+
+      # starts empty, but is used to track which volumes have had a transform applied
+      transformsArray = np.full_like(self.volumesArray, "")
+
+      # if it is named "DefaultTransform", then it is used as the default
+      # otherwise if it is named according to the scene_model naming scheme, it is loaded instead
+      for transformIndex, transformFile in enumerate(transformsInDirectory):
+        name = str(os.path.basename(transformFile))
+        # remove file extension
+        name = name.replace('.h5','')
+
+        # The transform to be applied to all volumes without a corresponding transform
+        if name == "DefaultTransform":
+          print("Found default transform")
+          loadedTransform = slicer.util.loadTransform(directory + "/" + transformFile)
+
+          for scene in range(self.volumesArray.shape[0]):
+            for model in range(self.volumesArray.shape[1]):
+
+              # if a transform has not yet been applied
+              if transformsArray[scene][model] == "":
+                volume = slicer.util.getNode(self.volumesArray[scene][model])
+
+                volume.SetAndObserveTransformNodeID(loadedTransform.GetID())
+
+                transformsArray[scene][model] = name
+                
+
+        elif name.startswith("Scene_") and name.endswith("_Transform"):
+          print("Found exception transform")
+
+          sceneNumber = int(name.split("_")[1])
+          modelNumber = int(name.split("_")[3])
+
+          volume = slicer.util.getNode(self.volumesArray[sceneNumber][modelNumber])
+
+          loadedTransform = slicer.util.loadTransform(directory + "/" + transformFile)
+          volume.SetAndObserveTransformNodeID(loadedTransform.GetID())
+
+          transformsArray[sceneNumber][modelNumber] = name
+
+        # does not follow the naming scheme
+        else:
+          slicer.util.infoDisplay("A transform doesn't follow the naming scheme. Use DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+
+    else:
+      slicer.util.infoDisplay("No transforms found in selected folder. To add a transform, save them in the same folder as the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+
+
   def loadVolumes(self, directory):
     slicer.mrmlScene.Clear()
 
@@ -403,7 +458,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.util.loadVolume(directory + "/" + volumeFile)
 
         self.volumesArray[sceneNumber][modelNumber] = name
-
+      
 
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
@@ -413,7 +468,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
   # TODO: load transforms from file to correct the orientation of the spine
-  def centerAndRotateCamera(self, volume, viewNode):
+  def centerAndRotateCamera(self, volume, volumeIndex, viewNode):
     # Compute the RAS coordinates of the center of the volume
     imageData = volume.GetImageData() 
     volumeCenter_Ijk = imageData.GetCenter()
@@ -430,7 +485,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     camera.SetFocalPoint(volumeCenter_Ras)
     camera.SetViewUp([0, 0, 1])
-    camera.SetPosition(volumeCenter_Ras + np.array([0, -800, 0]))
+    camera.SetPosition(volumeCenter_Ras + np.array([0, -2500, 0]))
+    cameraNode.ResetClippingRange()
+
+    # equivalent to pressing the "center 3D view" button
+    layoutManager = slicer.app.layoutManager()
+    threeDWidget = layoutManager.threeDWidget(volumeIndex)
+    threeDView = threeDWidget.threeDView()
+    threeDView.resetFocalPoint()
 
 
 
@@ -519,16 +581,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
       viewNode.LinkedControlOn()
 
-      # https://www.slicer.org/wiki/Documentation/4.10/Modules/VolumeRendering#How_Tos
-      # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#show-volume-rendering-automatically-when-a-volume-is-loaded
-      # https://www.slicer.org/w/index.php/Documentation/4.3/Modules/VolumeRendering
-
       displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
       displayNode.SetVisibility(True)
 
-      self.centerAndRotateCamera(volume, viewNode)
-
       displayNode.SetViewNodeIDs([viewNode.GetID()])
+
+      self.centerAndRotateCamera(volume, volumeIndex, viewNode)
 
 
 
