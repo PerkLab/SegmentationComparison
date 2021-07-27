@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>511</width>
-    <height>266</height>
+    <width>487</width>
+    <height>360</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -17,17 +17,17 @@
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="1">
-       <widget class="ctkDirectoryButton" name="directorySelector">
-        <property name="caption">
-         <string>Select a directory containing the segmentations to compare</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="text">
          <string>Input Folder:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="ctkDirectoryButton" name="directorySelector">
+        <property name="caption">
+         <string>Select a directory containing the segmentations to compare</string>
         </property>
        </widget>
       </item>
@@ -83,35 +83,6 @@
       <string>Controls</string>
      </property>
      <layout class="QFormLayout" name="formLayout">
-      <item row="2" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Volume threshold:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="ctkSliderWidget" name="imageThresholdSliderWidget">
-        <property name="toolTip">
-         <string>Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.</string>
-        </property>
-        <property name="singleStep">
-         <double>1.000000000000000</double>
-        </property>
-        <property name="minimum">
-         <double>0.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>255.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.500000000000000</double>
-        </property>
-        <property name="tracking">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label">
         <property name="text">
@@ -137,6 +108,65 @@
         </property>
         <property name="removeEnabled">
          <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Volume threshold:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="ctkSliderWidget" name="imageThresholdSliderWidget">
+        <property name="toolTip">
+         <string>Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.</string>
+        </property>
+        <property name="singleStep">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="minimum">
+         <double>0.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>255.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.500000000000000</double>
+        </property>
+        <property name="tracking">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>Browse volumes:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QPushButton" name="previousButton">
+        <property name="text">
+         <string>Previous</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QPushButton" name="nextButton">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>359</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Next</string>
         </property>
        </widget>
       </item>

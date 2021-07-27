@@ -172,6 +172,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.displayButton.connect('clicked(bool)', self.onDisplayButton)
 
+    self.ui.nextButton.connect('clicked(bool)', self.onNextButton)
+
+    self.ui.previousButton.connect('clicked(bool)', self.onPreviousButton)
+
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
@@ -342,6 +346,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
 
+  def onPreviousButton(self):
+    # previous button pressed while displaying the first scene
+    if self.logic.currentScene!=0:
+      print("displaying previous scene")
+
+      self.logic.currentScene -= 1
+      self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+
+  def onNextButton(self):
+    # previous button pressed while displaying the first scene
+    if self.logic.currentScene!=self.logic.numberOfScenes-1:
+      print("displaying next scene")
+      
+      self.logic.currentScene += 1
+      self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+
 #
 # SegmentationComparisonLogic
 #
@@ -363,6 +383,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
     
     self.volumesArray = np.zeros((0,0), dtype='object')
+    self.currentScene = 0
+    self.numberOfScenes = 0
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -455,6 +477,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         
         self.volumesArray.resize((volumeArrayXDim+1, volumeArrayYDim+1))
 
+        self.numberOfScenes = volumeArrayXDim+1
+
         slicer.util.loadVolume(directory + "/" + volumeFile)
 
         self.volumesArray[sceneNumber][modelNumber] = name
@@ -467,7 +491,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
 
-  # TODO: load transforms from file to correct the orientation of the spine
   def centerAndRotateCamera(self, volume, volumeIndex, viewNode):
     # Compute the RAS coordinates of the center of the volume
     imageData = volume.GetImageData() 
@@ -490,7 +513,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     # equivalent to pressing the "center 3D view" button
     layoutManager = slicer.app.layoutManager()
-    threeDWidget = layoutManager.threeDWidget(volumeIndex)
+
+    threeDWidget = layoutManager.viewWidget(viewNode)
     threeDView = threeDWidget.threeDView()
     threeDView.resetFocalPoint()
 
@@ -540,8 +564,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   def setCustomView(self, numberOfRows, numberOfColumns, volumesToDisplay):
     customLayoutId=567  # we pick a random id that is not used by others
-    slicer.app.setRenderPaused(True)
-
+    
     customLayout = '<layout type="vertical">'
     viewIndex = 0
     for rowIndex in range(numberOfRows):
@@ -559,13 +582,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
 
     slicer.app.layoutManager().setLayout(customLayoutId)
-    slicer.app.setRenderPaused(False)
 
 
   def prepareDisplay(self, selectedScene, thresholdValue):
 
     # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
-    
+    slicer.app.setRenderPaused(True)
+
     numberOfColumns = 2
     numberOfVolumes = len(self.volumesArray[selectedScene])
     numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
@@ -582,12 +605,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       viewNode.LinkedControlOn()
 
       displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
+      
       displayNode.SetVisibility(True)
 
       displayNode.SetViewNodeIDs([viewNode.GetID()])
 
       self.centerAndRotateCamera(volume, volumeIndex, viewNode)
 
+    slicer.app.setRenderPaused(False)
 
 
   def threshold(self, inputVolume, imageThreshold, showResult=True):
