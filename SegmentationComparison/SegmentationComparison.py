@@ -10,6 +10,7 @@ from slicer.util import VTKObservationMixin
 
 import numpy as np
 import math
+import time
 
 #
 # SegmentationComparison
@@ -339,25 +340,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       
 
   def onDisplayButton(self):
-
-    # Once "next" and "previous" buttons have been implemented,
-    # this function will pass the corresponding value into prepareDisplay()
-    # in order to change the group of volumes that are displayed
     self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
 
   def onPreviousButton(self):
-    # previous button pressed while displaying the first scene
+    # prevent wraparound
     if self.logic.currentScene!=0:
-      print("displaying previous scene")
+      print("displaying PREVIOUS scene")
 
       self.logic.currentScene -= 1
       self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
 
+
   def onNextButton(self):
-    # previous button pressed while displaying the first scene
+    # prevent wraparound
     if self.logic.currentScene!=self.logic.numberOfScenes-1:
-      print("displaying next scene")
+      print("displaying NEXT scene")
       
       self.logic.currentScene += 1
       self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
@@ -562,9 +560,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return displayNode
 
 
-  def setCustomView(self, numberOfRows, numberOfColumns, volumesToDisplay):
-    customLayoutId=567  # we pick a random id that is not used by others
-    
+  def setCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay):
+
     customLayout = '<layout type="vertical">'
     viewIndex = 0
     for rowIndex in range(numberOfRows):
@@ -581,7 +578,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not slicer.app.layoutManager().layoutLogic().GetLayoutNode().SetLayoutDescription(customLayoutId, customLayout):
         slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
 
-    slicer.app.layoutManager().setLayout(customLayoutId)
 
 
   def prepareDisplay(self, selectedScene, thresholdValue):
@@ -589,14 +585,18 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
     slicer.app.setRenderPaused(True)
 
+    customID = 567 + selectedScene
+
     numberOfColumns = 2
     numberOfVolumes = len(self.volumesArray[selectedScene])
     numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
     volumesToDisplay = self.volumesArray[selectedScene]
 
-    self.setCustomView(numberOfRows, numberOfColumns, volumesToDisplay)
-
+    self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay)
+    slicer.app.layoutManager().setLayout(customID)
+  
     # iterate through each volume, and display it in its own corresponding view
+
     for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
 
       volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
@@ -606,11 +606,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
       
-      displayNode.SetVisibility(True)
-
       displayNode.SetViewNodeIDs([viewNode.GetID()])
 
       self.centerAndRotateCamera(volume, volumeIndex, viewNode)
+
+      viewNode.SetOrientationMarkerType(slicer.vtkMRMLAbstractViewNode.OrientationMarkerTypeHuman)
+
+      if viewNode.GetOrientationMarkerSize != slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeSmall:
+        viewNode.SetOrientationMarkerSize(slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeSmall)
+
+      #displayNode.SetVisibility(True)
 
     slicer.app.setRenderPaused(False)
 
