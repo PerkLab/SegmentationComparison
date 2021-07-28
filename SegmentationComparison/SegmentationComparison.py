@@ -592,9 +592,19 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
     volumesToDisplay = self.volumesArray[selectedScene]
 
-    self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay)
-    slicer.app.layoutManager().setLayout(customID)
-  
+    existingViewNode = False
+
+    # if the view node already exists
+    # center the camera BEFORE switching views
+    # this prevents the user from seeing the camera centering
+    if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+volumesToDisplay[0]):
+      existingViewNode = True
+
+    else: 
+      self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay)
+      slicer.app.layoutManager().setLayout(customID)
+
+
     # iterate through each volume, and display it in its own corresponding view
 
     for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
@@ -615,7 +625,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       if viewNode.GetOrientationMarkerSize != slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeSmall:
         viewNode.SetOrientationMarkerSize(slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeSmall)
 
-      #displayNode.SetVisibility(True)
+    if existingViewNode:
+      # the pause allows for the camera centering to actually complete before switching views
+      time.sleep(0.1)
+      slicer.app.layoutManager().setLayout(customID)
 
     slicer.app.setRenderPaused(False)
 
