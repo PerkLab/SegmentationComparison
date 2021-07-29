@@ -489,7 +489,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
 
-  def centerAndRotateCamera(self, volume, volumeIndex, viewNode):
+  def centerAndRotateCamera(self, volume, viewNode):
     # Compute the RAS coordinates of the center of the volume
     imageData = volume.GetImageData() 
     volumeCenter_Ijk = imageData.GetCenter()
@@ -606,7 +606,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
     # iterate through each volume, and display it in its own corresponding view
-
     for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
 
       volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
@@ -615,15 +614,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       viewNode.LinkedControlOn()
 
       displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
-      
       displayNode.SetViewNodeIDs([viewNode.GetID()])
 
-      self.centerAndRotateCamera(volume, volumeIndex, viewNode)
+      self.centerAndRotateCamera(volume, viewNode)
 
-      viewNode.SetOrientationMarkerType(slicer.vtkMRMLAbstractViewNode.OrientationMarkerTypeHuman)
-
-      if viewNode.GetOrientationMarkerSize != slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeSmall:
-        viewNode.SetOrientationMarkerSize(slicer.vtkMRMLAbstractViewNode.OrientationMarkerSizeSmall)
+      viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
+      viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
 
     if existingViewNode:
       # the pause allows for the camera centering to actually complete before switching views
