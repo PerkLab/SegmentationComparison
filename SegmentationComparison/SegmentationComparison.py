@@ -152,12 +152,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
-    # This input selector will be removed soon
-    self.ui.inputSelector.connect(
-        "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-
-    self.ui.imageThresholdSliderWidget.connect(
-        "valueChanged(double)", self.updateParameterNodeFromGUI)
 
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.autoUpdateThresholdSlider)
@@ -171,11 +165,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
 
-    self.ui.displayButton.connect('clicked(bool)', self.onDisplayButton)
-
     self.ui.nextButton.connect('clicked(bool)', self.onNextButton)
 
     self.ui.previousButton.connect('clicked(bool)', self.onPreviousButton)
+
+    self.ui.resetCameraButton.connect('clicked(bool)', self.onResetCameraButton)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -236,14 +230,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.setParameterNode(self.logic.getParameterNode())
 
-    # Select default input nodes if nothing is selected yet to save a few clicks for the user
-    if not self._parameterNode.GetNodeReference("InputVolume"):
-      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass(
-          "vtkMRMLScalarVolumeNode")
-      if firstVolumeNode:
-        self._parameterNode.SetNodeReferenceID(
-            "InputVolume", firstVolumeNode.GetID())
-
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -282,9 +268,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._updatingGUIFromParameterNode = True
 
     # Update node selectors and sliders
-    self.ui.inputSelector.setCurrentNode(
-        self._parameterNode.GetNodeReference("InputVolume"))
-  
     self.ui.imageThresholdSliderWidget.value = float(
         self._parameterNode.GetParameter("Threshold"))
 
@@ -303,9 +286,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Modify all properties in a single batch
     wasModified = self._parameterNode.StartModify()
-
-    self._parameterNode.SetNodeReferenceID(
-        "InputVolume", self.ui.inputSelector.currentNodeID)
     
     self._parameterNode.SetParameter("Threshold", str(
         self.ui.imageThresholdSliderWidget.value))
@@ -317,12 +297,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def autoUpdateThresholdSlider(self):
 
     try:
-      # TODO: auto-select this input volume
-      inputVolume = self.ui.inputSelector.currentNode()
+      # auto-select the input volume
+      if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
+        for volume in self.logic.volumesArray[self.logic.currentScene]:
+          inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",volume)
 
-      # prevents invalid volume error when loading the widget
-      if inputVolume is not None:
-        self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
+          # prevents invalid volume error when loading the widget
+          if inputVolume is not None:
+            self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
 
     except Exception as e:
       slicer.util.errorDisplay("Failed to compute results: "+str(e))
@@ -337,16 +319,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if confirmation == True: 
       self.logic.loadVolumes(self.ui.directorySelector.directory)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
+
+      self.logic.currentScene = 0
+      self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
       
 
-  def onDisplayButton(self):
-    self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
+  def onResetCameraButton(self):
+    self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
 
 
   def onPreviousButton(self):
     # prevent wraparound
     if self.logic.currentScene!=0:
-      print("displaying PREVIOUS scene")
 
       self.logic.currentScene -= 1
       self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
@@ -355,10 +339,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def onNextButton(self):
     # prevent wraparound
     if self.logic.currentScene!=self.logic.numberOfScenes-1:
-      print("displaying NEXT scene")
       
       self.logic.currentScene += 1
       self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+
 
 #
 # SegmentationComparisonLogic
@@ -581,52 +565,55 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
   def prepareDisplay(self, selectedScene, thresholdValue):
+    
+    # prevent errors from previous or next buttons when the volumes havent been loaded in yet
+    if self.volumesArray != np.zeros((0,0), dtype='object'):
 
-    # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
-    slicer.app.setRenderPaused(True)
+      # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
+      slicer.app.setRenderPaused(True)
 
-    customID = 567 + selectedScene
+      customID = 567 + selectedScene
 
-    numberOfColumns = 2
-    numberOfVolumes = len(self.volumesArray[selectedScene])
-    numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
-    volumesToDisplay = self.volumesArray[selectedScene]
+      numberOfColumns = 2
+      numberOfVolumes = len(self.volumesArray[selectedScene])
+      numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
+      volumesToDisplay = self.volumesArray[selectedScene]
 
-    existingViewNode = False
+      existingViewNode = False
 
-    # if the view node already exists
-    # center the camera BEFORE switching views
-    # this prevents the user from seeing the camera centering
-    if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+volumesToDisplay[0]):
-      existingViewNode = True
+      # if the view node already exists
+      # center the camera BEFORE switching views
+      # this prevents the user from seeing the camera centering
+      if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+volumesToDisplay[0]):
+        existingViewNode = True
 
-    else: 
-      self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay)
-      slicer.app.layoutManager().setLayout(customID)
+      else: 
+        self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay)
+        slicer.app.layoutManager().setLayout(customID)
 
 
-    # iterate through each volume, and display it in its own corresponding view
-    for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
+      # iterate through each volume, and display it in its own corresponding view
+      for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
 
-      volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
+        volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
 
-      viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
-      viewNode.LinkedControlOn()
+        viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
+        viewNode.LinkedControlOn()
 
-      displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
-      displayNode.SetViewNodeIDs([viewNode.GetID()])
+        displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
+        displayNode.SetViewNodeIDs([viewNode.GetID()])
 
-      self.centerAndRotateCamera(volume, viewNode)
+        self.centerAndRotateCamera(volume, viewNode)
 
-      viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
-      viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
+        viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
+        viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
 
-    if existingViewNode:
-      # the pause allows for the camera centering to actually complete before switching views
-      time.sleep(0.1)
-      slicer.app.layoutManager().setLayout(customID)
+      if existingViewNode:
+        # the pause allows for the camera centering to actually complete before switching views
+        time.sleep(0.1)
+        slicer.app.layoutManager().setLayout(customID)
 
-    slicer.app.setRenderPaused(False)
+      slicer.app.setRenderPaused(False)
 
 
   def threshold(self, inputVolume, imageThreshold, showResult=True):
