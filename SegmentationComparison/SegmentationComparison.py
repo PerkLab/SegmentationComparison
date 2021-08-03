@@ -544,15 +544,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return displayNode
 
 
-  def setCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay):
+  def setCustomView(self, customLayoutId, numberOfRows, numberOfColumns, numberOfVolumes, firstViewNode):
 
     customLayout = '<layout type="vertical">'
-    viewIndex = 0
+    viewIndex = firstViewNode
     for rowIndex in range(numberOfRows):
       customLayout += '<item><layout type="horizontal">'
       for colIndex in range(numberOfColumns):
 
-        name = volumesToDisplay[viewIndex]
+        if viewIndex < firstViewNode+numberOfVolumes: name = str(viewIndex)
+        else: name = ""
         customLayout += '<item><view class="vtkMRMLViewNode" singletontag="'+name
         customLayout += '"><property name="viewlabel" action="default">'+name+'</property></view></item>'
         viewIndex += 1
@@ -577,18 +578,19 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       numberOfColumns = 2
       numberOfVolumes = len(self.volumesArray[selectedScene])
       numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
-      volumesToDisplay = self.volumesArray[selectedScene]
+      
+      firstViewNode = selectedScene*numberOfVolumes
 
       existingViewNode = False
 
       # if the view node already exists
       # center the camera BEFORE switching views
       # this prevents the user from seeing the camera centering
-      if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+volumesToDisplay[0]):
+      if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+str(firstViewNode)):
         existingViewNode = True
 
       else: 
-        self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay)
+        self.setCustomView(customID, numberOfRows, numberOfColumns, numberOfVolumes, firstViewNode)
         slicer.app.layoutManager().setLayout(customID)
 
 
@@ -597,7 +599,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
 
-        viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
+        viewNode = slicer.mrmlScene.GetSingletonNode(str(firstViewNode + volumeIndex), "vtkMRMLViewNode")
         viewNode.LinkedControlOn()
 
         displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
