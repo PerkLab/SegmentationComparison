@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>487</width>
-    <height>330</height>
+    <height>737</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -28,6 +28,13 @@
        <widget class="ctkDirectoryButton" name="directorySelector">
         <property name="caption">
          <string>Select a directory containing the segmentations to compare</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>Load volumes from folder:</string>
         </property>
        </widget>
       </item>
@@ -53,20 +60,13 @@
          </widget>
         </item>
         <item>
-         <widget class="QCheckBox" name="checkBox">
+         <widget class="QCheckBox" name="randomizeBox">
           <property name="text">
            <string>Randomize</string>
           </property>
          </widget>
         </item>
        </layout>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_4">
-        <property name="text">
-         <string>Load volumes from folder:</string>
-        </property>
-       </widget>
       </item>
      </layout>
     </widget>
