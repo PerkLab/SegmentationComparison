@@ -322,7 +322,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
     if confirmation == True: 
-      self.logic.loadVolumes(self.ui.directorySelector.directory)
+      self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
 
       self.logic.currentScene = 0
@@ -374,9 +374,21 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
     
+    self.clearVariables()
+
+  def clearVariables(self):
     self.volumesArray = np.zeros((0,0), dtype='object')
+    self.shuffledArray = np.zeros((0,0), dtype='object')
     self.currentScene = 0
     self.numberOfScenes = 0
+
+    # get rid of any views that might have been created already
+    views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
+
+    if views.GetNumberOfItems() > 1:
+
+      for view in views:
+        slicer.mrmlScene.RemoveNode(view)
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -440,8 +452,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       slicer.util.infoDisplay("No transforms found in selected folder. To add a transform, save them in the same folder as the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
 
 
-  def loadVolumes(self, directory):
+  def loadVolumes(self, directory, randomize):
     slicer.mrmlScene.Clear()
+
+    self.clearVariables()
 
     print("Checking directory: " + directory)
     
@@ -480,6 +494,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
       import traceback
       traceback.print_exc()
+
+    if randomize: self.createShuffledArray()
 
 
 
@@ -580,8 +596,26 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
 
 
-  def prepareDisplay(self, selectedScene, thresholdValue):
+  # currently, this function will shuffle every time the load volumes button is called
+  # this could be good (for testing the randomization feature quickly)
+  # but could also be bad (if the user accidentally clicks it, and loses the progress of their survey)
+  def createShuffledArray(self):
+
+    print("shuffling the array")
+    self.shuffledArray = self.volumesArray
+
     
+    for scene in range(len(self.shuffledArray)):
+      print("shuffling a new scene")
+      np.random.shuffle(self.shuffledArray[scene])
+
+    np.random.shuffle(self.shuffledArray)
+
+    print(self.shuffledArray)
+
+
+  def prepareDisplay(self, selectedScene, thresholdValue):
+
     # prevent errors from previous or next buttons when the volumes havent been loaded in yet
     if self.volumesArray != np.zeros((0,0), dtype='object'):
 
