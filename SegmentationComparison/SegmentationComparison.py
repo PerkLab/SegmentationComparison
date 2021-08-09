@@ -322,6 +322,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
     if confirmation == True: 
+
       self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
 
@@ -375,6 +376,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
     
     self.clearVariables()
+    
 
   def clearVariables(self):
     self.volumesArray = np.zeros((0,0), dtype='object')
@@ -382,13 +384,25 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.currentScene = 0
     self.numberOfScenes = 0
 
-    # get rid of any views that might have been created already
+
+  def resetScene(self):
+    slicer.mrmlScene.Clear()
+
+    # the following lines clean up things that aren't affected by clearing the scene
+
     views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
+    for view in views:
+      slicer.mrmlScene.RemoveNode(view)
 
-    if views.GetNumberOfItems() > 1:
+    cameras = slicer.mrmlScene.GetNodesByClass("vtkMRMLCameraNode")
+    for camera in cameras:
+      slicer.mrmlScene.RemoveNode(camera)
 
-      for view in views:
-        slicer.mrmlScene.RemoveNode(view)
+    self.clearVariables()
+
+    # if the layout is not changed from the custom one, then it will result in weird problems when numbering the views
+    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -453,9 +467,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
 
   def loadVolumes(self, directory, randomize):
-    slicer.mrmlScene.Clear()
 
-    self.clearVariables()
+    # improves readability of console output
+    print('\n',"LOAD BUTTON PRESSED, RESETTING THE SCENE",'\n')
+
+    self.resetScene()
 
     print("Checking directory: " + directory)
     
@@ -601,16 +617,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   # but could also be bad (if the user accidentally clicks it, and loses the progress of their survey)
   def createShuffledArray(self):
 
-    print("shuffling the array")
     self.shuffledArray = self.volumesArray
-
     
     for scene in range(len(self.shuffledArray)):
-      print("shuffling a new scene")
       np.random.shuffle(self.shuffledArray[scene])
 
     np.random.shuffle(self.shuffledArray)
 
+    print("Shuffled array: ")
     print(self.shuffledArray)
 
 
