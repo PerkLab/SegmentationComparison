@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>487</width>
-    <height>737</height>
+    <height>300</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -45,12 +45,6 @@
           <property name="enabled">
            <bool>true</bool>
           </property>
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>23</height>
-           </size>
-          </property>
           <property name="toolTip">
            <string>Load volumes from input folder</string>
           </property>
@@ -61,6 +55,12 @@
         </item>
         <item>
          <widget class="QCheckBox" name="randomizeBox">
+          <property name="maximumSize">
+           <size>
+            <width>76</width>
+            <height>16777215</height>
+           </size>
+          </property>
           <property name="text">
            <string>Randomize</string>
           </property>

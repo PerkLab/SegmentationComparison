@@ -671,8 +671,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         self.centerAndRotateCamera(volume, viewNode)
 
-        viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
         viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
+        viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
 
       if existingViewNode:
         # the pause allows for the camera centering to actually complete before switching views
