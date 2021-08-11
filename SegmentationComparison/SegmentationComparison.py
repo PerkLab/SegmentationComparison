@@ -198,6 +198,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     # Make sure parameter node exists and observed
     self.initializeParameterNode()
+    slicer.util.setDataProbeVisible(False)  # We don't use data probe, and it takes valuable space from widget.
 
 
   def exit(self):
@@ -207,7 +208,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
     self.removeObserver(
         self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-
+    slicer.util.setDataProbeVisible(True)
 
   def onSceneStartClose(self, caller, event):
     """
@@ -391,10 +392,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # the following lines clean up things that aren't affected by clearing the scene
 
     views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
+    views.UnRegister(None)
     for view in views:
       slicer.mrmlScene.RemoveNode(view)
 
     cameras = slicer.mrmlScene.GetNodesByClass("vtkMRMLCameraNode")
+    cameras.UnRegister(None)
     for camera in cameras:
       slicer.mrmlScene.RemoveNode(camera)
 
