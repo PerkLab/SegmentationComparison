@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>511</width>
-    <height>266</height>
+    <width>487</width>
+    <height>737</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -17,17 +17,17 @@
       <string>Inputs</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="1">
-       <widget class="ctkDirectoryButton" name="directorySelector">
-        <property name="caption">
-         <string>Select a directory containing the segmentations to compare</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="text">
          <string>Input Folder:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="ctkDirectoryButton" name="directorySelector">
+        <property name="caption">
+         <string>Select a directory containing the segmentations to compare</string>
         </property>
        </widget>
       </item>
@@ -39,58 +39,52 @@
        </widget>
       </item>
       <item row="4" column="1">
-       <widget class="QPushButton" name="loadButton">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>23</height>
-         </size>
-        </property>
-        <property name="toolTip">
-         <string>Load volumes from input folder</string>
-        </property>
-        <property name="text">
-         <string>Load</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label_5">
-        <property name="text">
-         <string>Display segmentation(s): </string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QPushButton" name="displayButton">
-        <property name="toolTip">
-         <string>Display volumes with volume rendering</string>
-        </property>
-        <property name="text">
-         <string>Display</string>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QPushButton" name="loadButton">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>23</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Load volumes from input folder</string>
+          </property>
+          <property name="text">
+           <string>Load</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="randomizeBox">
+          <property name="text">
+           <string>Randomize</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="CollapsibleButton">
+    <widget class="ctkCollapsibleButton" name="controlsCollapsibleButton">
      <property name="text">
       <string>Controls</string>
      </property>
      <layout class="QFormLayout" name="formLayout">
-      <item row="2" column="0">
+      <item row="0" column="0">
        <widget class="QLabel" name="label_3">
         <property name="text">
          <string>Volume threshold:</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="0" column="1">
        <widget class="ctkSliderWidget" name="imageThresholdSliderWidget">
         <property name="toolTip">
          <string>Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.</string>
@@ -112,31 +106,49 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label">
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_6">
         <property name="text">
-         <string>Input volume: </string>
+         <string>Browse volumes:</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="qMRMLNodeComboBox" name="inputSelector">
-        <property name="toolTip">
-         <string>Pick the input to the algorithm.</string>
-        </property>
-        <property name="nodeTypes">
-         <stringlist>
-          <string>vtkMRMLScalarVolumeNode</string>
-         </stringlist>
-        </property>
-        <property name="showChildNodeTypes">
-         <bool>false</bool>
-        </property>
-        <property name="addEnabled">
-         <bool>false</bool>
-        </property>
-        <property name="removeEnabled">
-         <bool>false</bool>
+      <item row="2" column="1">
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <item>
+           <widget class="QPushButton" name="previousButton">
+            <property name="text">
+             <string>Previous</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="nextButton">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>Next</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QPushButton" name="resetCameraButton">
+          <property name="text">
+           <string>Reset camera</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="text">
+         <string/>
         </property>
        </widget>
       </item>
@@ -176,11 +188,6 @@
    <header>ctkSliderWidget.h</header>
   </customwidget>
   <customwidget>
-   <class>qMRMLNodeComboBox</class>
-   <extends>QWidget</extends>
-   <header>qMRMLNodeComboBox.h</header>
-  </customwidget>
-  <customwidget>
    <class>qMRMLWidget</class>
    <extends>QWidget</extends>
    <header>qMRMLWidget.h</header>
@@ -188,22 +195,5 @@
   </customwidget>
  </customwidgets>
  <resources/>
- <connections>
-  <connection>
-   <sender>SegmentationComparison</sender>
-   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>inputSelector</receiver>
-   <slot>setMRMLScene(vtkMRMLScene*)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>122</x>
-     <y>132</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>248</x>
-     <y>61</y>
-    </hint>
-   </hints>
-  </connection>
- </connections>
+ <connections/>
 </ui>

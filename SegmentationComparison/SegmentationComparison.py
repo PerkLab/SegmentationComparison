@@ -10,6 +10,7 @@ from slicer.util import VTKObservationMixin
 
 import numpy as np
 import math
+import time
 
 #
 # SegmentationComparison
@@ -117,6 +118,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
 
+    self.randomizeOutput = False
+
 
   def setup(self):
     """
@@ -151,12 +154,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
-    # This input selector will be removed soon
-    self.ui.inputSelector.connect(
-        "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-
-    self.ui.imageThresholdSliderWidget.connect(
-        "valueChanged(double)", self.updateParameterNodeFromGUI)
 
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.autoUpdateThresholdSlider)
@@ -170,7 +167,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
 
-    self.ui.displayButton.connect('clicked(bool)', self.onDisplayButton)
+    self.ui.nextButton.connect('clicked(bool)', self.onNextButton)
+
+    self.ui.previousButton.connect('clicked(bool)', self.onPreviousButton)
+
+    self.ui.resetCameraButton.connect('clicked(bool)', self.onResetCameraButton)
+
+
+    self.ui.randomizeBox.stateChanged.connect(self.onRandomizeBox)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -231,14 +235,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.setParameterNode(self.logic.getParameterNode())
 
-    # Select default input nodes if nothing is selected yet to save a few clicks for the user
-    if not self._parameterNode.GetNodeReference("InputVolume"):
-      firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass(
-          "vtkMRMLScalarVolumeNode")
-      if firstVolumeNode:
-        self._parameterNode.SetNodeReferenceID(
-            "InputVolume", firstVolumeNode.GetID())
-
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -277,9 +273,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._updatingGUIFromParameterNode = True
 
     # Update node selectors and sliders
-    self.ui.inputSelector.setCurrentNode(
-        self._parameterNode.GetNodeReference("InputVolume"))
-  
     self.ui.imageThresholdSliderWidget.value = float(
         self._parameterNode.GetParameter("Threshold"))
 
@@ -298,9 +291,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Modify all properties in a single batch
     wasModified = self._parameterNode.StartModify()
-
-    self._parameterNode.SetNodeReferenceID(
-        "InputVolume", self.ui.inputSelector.currentNodeID)
     
     self._parameterNode.SetParameter("Threshold", str(
         self.ui.imageThresholdSliderWidget.value))
@@ -312,12 +302,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def autoUpdateThresholdSlider(self):
 
     try:
-      # TODO: auto-select this input volume
-      inputVolume = self.ui.inputSelector.currentNode()
+      # auto-select the input volume
+      if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
+        for volume in self.logic.volumesArray[self.logic.currentScene]:
+          inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",volume)
 
-      # prevents invalid volume error when loading the widget
-      if inputVolume is not None:
-        self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
+          # prevents invalid volume error when loading the widget
+          if inputVolume is not None:
+            self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
 
     except Exception as e:
       slicer.util.errorDisplay("Failed to compute results: "+str(e))
@@ -330,16 +322,38 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
     if confirmation == True: 
-      self.logic.loadVolumes(self.ui.directorySelector.directory)
+
+      self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
+      self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
+
+      self.logic.currentScene = 0
+      self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
       
 
-  def onDisplayButton(self):
+  def onResetCameraButton(self):
+    self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
 
-    # Once "next" and "previous" buttons have been implemented,
-    # this function will pass the corresponding value into prepareDisplay()
-    # in order to change the group of volumes that are displayed
-    self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
+  def onPreviousButton(self):
+    # prevent wraparound
+    if self.logic.currentScene!=0:
+
+      self.logic.currentScene -= 1
+      self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+
+
+  def onNextButton(self):
+    # prevent wraparound
+    if self.logic.currentScene!=self.logic.numberOfScenes-1:
+      
+      self.logic.currentScene += 1
+      self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+
+  def onRandomizeBox(self, checkState):
+    if checkState == qt.Qt.Checked:
+      self.randomizeOutput = True
+    elif checkState == qt.Qt.Unchecked:
+      self.randomizeOutput = False
 
 #
 # SegmentationComparisonLogic
@@ -361,7 +375,34 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
     
+    self.clearVariables()
+    
+
+  def clearVariables(self):
     self.volumesArray = np.zeros((0,0), dtype='object')
+    self.shuffledArray = np.zeros((0,0), dtype='object')
+    self.currentScene = 0
+    self.numberOfScenes = 0
+
+
+  def resetScene(self):
+    slicer.mrmlScene.Clear()
+
+    # the following lines clean up things that aren't affected by clearing the scene
+
+    views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
+    for view in views:
+      slicer.mrmlScene.RemoveNode(view)
+
+    cameras = slicer.mrmlScene.GetNodesByClass("vtkMRMLCameraNode")
+    for camera in cameras:
+      slicer.mrmlScene.RemoveNode(camera)
+
+    self.clearVariables()
+
+    # if the layout is not changed from the custom one, then it will result in weird problems when numbering the views
+    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -371,8 +412,66 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       parameterNode.SetParameter("Threshold", "0")
 
 
-  def loadVolumes(self, directory):
-    slicer.mrmlScene.Clear()
+  def loadAndApplyTransforms(self, directory):
+    transformsInDirectory = list(f for f in os.listdir(directory) if f.endswith(".h5"))
+
+    if transformsInDirectory != []:
+      print("Found transforms: " + str(len(transformsInDirectory)))
+
+      # starts empty, but is used to track which volumes have had a transform applied
+      transformsArray = np.full_like(self.volumesArray, "")
+
+      # if it is named "DefaultTransform", then it is used as the default
+      # otherwise if it is named according to the scene_model naming scheme, it is loaded instead
+      for transformIndex, transformFile in enumerate(transformsInDirectory):
+        name = str(os.path.basename(transformFile))
+        # remove file extension
+        name = name.replace('.h5','')
+
+        # The transform to be applied to all volumes without a corresponding transform
+        if name == "DefaultTransform":
+          print("Found default transform")
+          loadedTransform = slicer.util.loadTransform(directory + "/" + transformFile)
+
+          for scene in range(self.volumesArray.shape[0]):
+            for model in range(self.volumesArray.shape[1]):
+
+              # if a transform has not yet been applied
+              if transformsArray[scene][model] == "":
+                volume = slicer.util.getNode(self.volumesArray[scene][model])
+
+                volume.SetAndObserveTransformNodeID(loadedTransform.GetID())
+
+                transformsArray[scene][model] = name
+                
+
+        elif name.startswith("Scene_") and name.endswith("_Transform"):
+          print("Found exception transform")
+
+          sceneNumber = int(name.split("_")[1])
+          modelNumber = int(name.split("_")[3])
+
+          volume = slicer.util.getNode(self.volumesArray[sceneNumber][modelNumber])
+
+          loadedTransform = slicer.util.loadTransform(directory + "/" + transformFile)
+          volume.SetAndObserveTransformNodeID(loadedTransform.GetID())
+
+          transformsArray[sceneNumber][modelNumber] = name
+
+        # does not follow the naming scheme
+        else:
+          slicer.util.infoDisplay("A transform doesn't follow the naming scheme. Use DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+
+    else:
+      slicer.util.infoDisplay("No transforms found in selected folder. To add a transform, save them in the same folder as the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+
+
+  def loadVolumes(self, directory, randomize):
+
+    # improves readability of console output
+    print('\n',"LOAD BUTTON PRESSED, RESETTING THE SCENE",'\n')
+
+    self.resetScene()
 
     print("Checking directory: " + directory)
     
@@ -400,19 +499,22 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         
         self.volumesArray.resize((volumeArrayXDim+1, volumeArrayYDim+1))
 
+        self.numberOfScenes = volumeArrayXDim+1
+
         slicer.util.loadVolume(directory + "/" + volumeFile)
 
         self.volumesArray[sceneNumber][modelNumber] = name
-
+      
 
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
       import traceback
       traceback.print_exc()
 
+    if randomize: self.createShuffledArray()
 
 
-  # TODO: load transforms from file to correct the orientation of the spine
+
   def centerAndRotateCamera(self, volume, viewNode):
     # Compute the RAS coordinates of the center of the volume
     imageData = volume.GetImageData() 
@@ -430,7 +532,15 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     camera.SetFocalPoint(volumeCenter_Ras)
     camera.SetViewUp([0, 0, 1])
-    camera.SetPosition(volumeCenter_Ras + np.array([0, -800, 0]))
+    camera.SetPosition(volumeCenter_Ras + np.array([0, -2500, 0]))
+    cameraNode.ResetClippingRange()
+
+    # equivalent to pressing the "center 3D view" button
+    layoutManager = slicer.app.layoutManager()
+
+    threeDWidget = layoutManager.viewWidget(viewNode)
+    threeDView = threeDWidget.threeDView()
+    threeDView.resetFocalPoint()
 
 
 
@@ -476,9 +586,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return displayNode
 
 
-  def setCustomView(self, numberOfRows, numberOfColumns, volumesToDisplay):
-    customLayoutId=567  # we pick a random id that is not used by others
-    slicer.app.setRenderPaused(True)
+  def setCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode):
+
+    numberOfVolumes = len(volumesToDisplay)
 
     customLayout = '<layout type="vertical">'
     viewIndex = 0
@@ -486,8 +596,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       customLayout += '<item><layout type="horizontal">'
       for colIndex in range(numberOfColumns):
 
-        name = volumesToDisplay[viewIndex]
-        customLayout += '<item><view class="vtkMRMLViewNode" singletontag="'+name
+        if viewIndex < numberOfVolumes: 
+          name = str(viewIndex + firstViewNode)
+          tag = volumesToDisplay[viewIndex]
+        else: 
+          name = ""
+          tag = ""
+        customLayout += '<item><view class="vtkMRMLViewNode" singletontag="' + tag
         customLayout += '"><property name="viewlabel" action="default">'+name+'</property></view></item>'
         viewIndex += 1
       customLayout += '</layout></item>'
@@ -496,40 +611,75 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not slicer.app.layoutManager().layoutLogic().GetLayoutNode().SetLayoutDescription(customLayoutId, customLayout):
         slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
 
-    slicer.app.layoutManager().setLayout(customLayoutId)
-    slicer.app.setRenderPaused(False)
+
+  # currently, this function will shuffle every time the load volumes button is called
+  # this could be good (for testing the randomization feature quickly)
+  # but could also be bad (if the user accidentally clicks it, and loses the progress of their survey)
+  def createShuffledArray(self):
+
+    self.shuffledArray = self.volumesArray
+    
+    for scene in range(len(self.shuffledArray)):
+      np.random.shuffle(self.shuffledArray[scene])
+
+    np.random.shuffle(self.shuffledArray)
+
+    print("Shuffled array: ")
+    print(self.shuffledArray)
 
 
   def prepareDisplay(self, selectedScene, thresholdValue):
 
-    # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
-    
-    numberOfColumns = 2
-    numberOfVolumes = len(self.volumesArray[selectedScene])
-    numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
-    volumesToDisplay = self.volumesArray[selectedScene]
+    # prevent errors from previous or next buttons when the volumes havent been loaded in yet
+    if self.volumesArray != np.zeros((0,0), dtype='object'):
 
-    self.setCustomView(numberOfRows, numberOfColumns, volumesToDisplay)
+      # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
+      slicer.app.setRenderPaused(True)
 
-    # iterate through each volume, and display it in its own corresponding view
-    for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
+      customID = 567 + selectedScene
 
-      volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
+      numberOfColumns = 2
+      numberOfVolumes = len(self.volumesArray[selectedScene])
+      numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
+      
+      firstViewNode = selectedScene*numberOfVolumes
+      volumesToDisplay = self.volumesArray[selectedScene]
 
-      viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
-      viewNode.LinkedControlOn()
+      existingViewNode = False
 
-      # https://www.slicer.org/wiki/Documentation/4.10/Modules/VolumeRendering#How_Tos
-      # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#show-volume-rendering-automatically-when-a-volume-is-loaded
-      # https://www.slicer.org/w/index.php/Documentation/4.3/Modules/VolumeRendering
+      # if the view node already exists
+      # center the camera BEFORE switching views
+      # this prevents the user from seeing the camera centering
+      if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+volumesToDisplay[0]):
+        existingViewNode = True
 
-      displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
-      displayNode.SetVisibility(True)
+      else: 
+        self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode)
+        slicer.app.layoutManager().setLayout(customID)
 
-      self.centerAndRotateCamera(volume, viewNode)
 
-      displayNode.SetViewNodeIDs([viewNode.GetID()])
+      # iterate through each volume, and display it in its own corresponding view
+      for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
 
+        volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
+
+        viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
+        viewNode.LinkedControlOn()
+
+        displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
+        displayNode.SetViewNodeIDs([viewNode.GetID()])
+
+        self.centerAndRotateCamera(volume, viewNode)
+
+        viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
+        viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
+
+      if existingViewNode:
+        # the pause allows for the camera centering to actually complete before switching views
+        time.sleep(0.1)
+        slicer.app.layoutManager().setLayout(customID)
+
+      slicer.app.setRenderPaused(False)
 
 
   def threshold(self, inputVolume, imageThreshold, showResult=True):
