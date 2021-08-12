@@ -27,7 +27,7 @@ class SegmentationComparison(ScriptedLoadableModule):
     # TODO: make this more human readable by adding spaces
     self.parent.title = "SegmentationComparison"
     # TODO: set categories (folders where the module shows up in the module selector)
-    self.parent.categories = ["Examples"]
+    self.parent.categories = ["Ultrasound"]
     # TODO: add here list of module names that this module requires
     self.parent.dependencies = []
     # TODO: replace with "Firstname Lastname (Organization)"
@@ -106,7 +106,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  LAST_PATH_SETTING="SegmentationComparison/LastSelectedPath"
+  LAST_INPUT_PATH_SETTING="SegmentationComparison/LastInputPath"
+  LAST_OUTPUT_PATH_SETTING="SegmentationComparison/LastOutputPath"
 
   def __init__(self, parent=None):
     """
@@ -158,11 +159,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.autoUpdateThresholdSlider)
 
-    lastPath = slicer.util.settingsValue(self.LAST_PATH_SETTING, "")
-    if lastPath != "":
-      self.ui.directorySelector.directory = lastPath
+    lastInputPath = slicer.util.settingsValue(self.LAST_INPUT_PATH_SETTING, "")
+    if lastInputPath != "":
+      self.ui.directorySelector.directory = lastInputPath
 
-    self.ui.directorySelector.connect("directoryChanged(const QString)", self.onDirectorySelected)
+    lastResultsPath = slicer.util.settingsValue(self.LAST_OUTPUT_PATH_SETTING, "")
+    if lastResultsPath != "":
+      self.ui.resultsDirectorySelector.directory = lastResultsPath
+
+
+    self.ui.directorySelector.connect("directoryChanged(const QString)", self.onInputDirectorySelected)
+
+    self.ui.resultsDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
 
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
@@ -173,16 +181,41 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.resetCameraButton.connect('clicked(bool)', self.onResetCameraButton)
 
+    self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
+
+
+    self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
+
+    self.ui.rightGroup.buttonClicked.connect(self.onRightGroup)
 
     self.ui.randomizeBox.stateChanged.connect(self.onRandomizeBox)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
+    index = 1
+    for button in self.ui.leftGroup.buttons():
+      buttonName = "L_"+str(index)
+      button.setAccessibleName(buttonName)
 
-  def onDirectorySelected(self, selectedPath):
+      index += 1
+
+    index = 1
+    for button in self.ui.rightGroup.buttons():
+      buttonName = "R_"+str(index)
+      button.setAccessibleName(buttonName)
+
+      index += 1
+
+
+  def onInputDirectorySelected(self, selectedPath):
     settings = qt.QSettings()
-    settings.setValue(self.LAST_PATH_SETTING, selectedPath)
+    settings.setValue(self.LAST_INPUT_PATH_SETTING, selectedPath)
+    self.updateParameterNodeFromGUI()
+
+  def onOutputDirectorySelected(self, selectedPath):
+    settings = qt.QSettings()
+    settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
     self.updateParameterNodeFromGUI()
 
   def cleanup(self):
@@ -320,9 +353,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
 
   def onLoadButton(self):
-    confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
+    if self.logic.surveyStarted:
+      confirmation = slicer.util.confirmYesNoDisplay("WARNING: This will delete all survey progress. Proceed?")
+
+    else: 
+      confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
     if confirmation == True: 
+      if self.logic.surveyStarted:
+        # set progress bar back to zero
+        self.logic.surveyStarted=False
+
+      self.uncheckAllButtons()
 
       self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
@@ -339,22 +381,89 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # prevent wraparound
     if self.logic.currentScene!=0:
 
+      self.uncheckAllButtons()
+
       self.logic.currentScene -= 1
       self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
-
+      self.repopulateSurveyButtons()
 
   def onNextButton(self):
     # prevent wraparound
     if self.logic.currentScene!=self.logic.numberOfScenes-1:
+
+      self.uncheckAllButtons()
       
       self.logic.currentScene += 1
       self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+      self.repopulateSurveyButtons()
 
   def onRandomizeBox(self, checkState):
     if checkState == qt.Qt.Checked:
       self.randomizeOutput = True
     elif checkState == qt.Qt.Unchecked:
       self.randomizeOutput = False
+
+
+  def onLeftGroup(self):
+    rating = self.ui.leftGroup.checkedButton().accessibleName
+    self.onRating(rating)
+
+  def onRightGroup(self):
+    rating = self.ui.rightGroup.checkedButton().accessibleName
+    self.onRating(rating)
+
+  def onRating(self,rating):
+    if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
+      self.logic.recordRatingInTable(rating)
+    else:
+      self.uncheckAllButtons()
+
+
+  def repopulateSurveyButtons(self):
+
+    currentlyDisplayedVolumes = self.logic.volumesArray[self.logic.currentScene]
+    
+    leftModelNumber = int(currentlyDisplayedVolumes[0].split("_")[3])
+    rightModelNumber = int(currentlyDisplayedVolumes[1].split("_")[3])
+
+    leftModelRating = self.logic.surveyTable.GetCellText(self.logic.currentScene,leftModelNumber+1)
+    rightModelRating = self.logic.surveyTable.GetCellText(self.logic.currentScene,rightModelNumber+1)
+
+    leftSurveyButton = "L_"+str(leftModelRating)
+    rightSurveyButton = "R_"+str(rightModelRating)
+
+    allButtons = self.ui.leftGroup.buttons() + self.ui.rightGroup.buttons()
+    for button in allButtons:
+      if button.accessibleName==leftSurveyButton or button.accessibleName==rightSurveyButton:
+        button.setChecked(True)
+
+
+  def uncheckAllButtons(self):
+    self.ui.leftGroup.setExclusive(False)
+    self.ui.rightGroup.setExclusive(False)
+
+    allButtons = self.ui.leftGroup.buttons() + self.ui.rightGroup.buttons()
+    for button in allButtons:
+      button.setChecked(False)
+
+    self.ui.rightGroup.setExclusive(True)
+    self.ui.leftGroup.setExclusive(True)
+
+
+  def onSaveButton(self):
+
+    # Generate file name
+    import time
+    sceneSaveFilename = self.ui.resultsDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
+
+    slicer.mrmlScene.AddNode(self.logic.surveyTable)
+
+    # Save scene
+    if slicer.util.saveScene(sceneSaveFilename):
+      logging.info("Scene saved to: {0}".format(sceneSaveFilename))
+    else:
+      logging.error("Scene saving failed")
+
 
 #
 # SegmentationComparisonLogic
@@ -384,6 +493,17 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.shuffledArray = np.zeros((0,0), dtype='object')
     self.currentScene = 0
     self.numberOfScenes = 0
+
+    self.surveyTable = slicer.vtkMRMLTableNode()
+
+    col=self.surveyTable.AddColumn()
+    col.SetName('Scene #')
+    col=self.surveyTable.AddColumn()
+    col.SetName('Model_0')
+    col=self.surveyTable.AddColumn()
+    col.SetName('Model_1')
+
+    self.surveyStarted = False
 
 
   def resetScene(self):
@@ -683,6 +803,32 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.app.layoutManager().setLayout(customID)
 
       slicer.app.setRenderPaused(False)
+
+  def recordRatingInTable(self,buttonId):
+    if not self.surveyStarted:
+      self.surveyStarted=True
+
+    # split the name
+    side = buttonId.split("_")[0]
+    rating = int(buttonId.split("_")[1])
+
+    for row in range(self.numberOfScenes):
+      self.surveyTable.AddEmptyRow()
+
+    currentlyDisplayedVolumes = self.volumesArray[self.currentScene]
+
+    if side == "L":
+      selectedVolume = currentlyDisplayedVolumes[0]
+      selectedModel = int(selectedVolume.split("_")[3])
+
+    elif side == "R":
+      selectedVolume = currentlyDisplayedVolumes[1]
+      selectedModel = int(selectedVolume.split("_")[3])
+
+    else:
+      slicer.util.errorDisplay("ERROR: Invalid button Id")
+
+    self.surveyTable.SetCellText(self.currentScene,selectedModel+1,str(rating))
 
 
   def threshold(self, inputVolume, imageThreshold, showResult=True):
