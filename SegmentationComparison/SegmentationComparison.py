@@ -183,6 +183,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
 
+    self.ui.progressBar.connect('valueChanged(int value)', self.updateGUIFromParameterNode)
+
 
     self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
 
@@ -360,8 +362,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
 
     if confirmation == True: 
+      
       if self.logic.surveyStarted:
-        # set progress bar back to zero
+        self.ui.progressBar.reset()
         self.logic.surveyStarted=False
 
       self.uncheckAllButtons()
@@ -371,6 +374,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       self.logic.currentScene = 0
       self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
+
+      if len(self.logic.volumesArray[0]) > 2:
+        slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
       
 
   def onResetCameraButton(self):
@@ -380,22 +386,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def onPreviousButton(self):
     # prevent wraparound
     if self.logic.currentScene!=0:
-
-      self.uncheckAllButtons()
-
-      self.logic.currentScene -= 1
-      self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
-      self.repopulateSurveyButtons()
+      self.changeScene(-1)
 
   def onNextButton(self):
     # prevent wraparound
     if self.logic.currentScene!=self.logic.numberOfScenes-1:
+      self.changeScene(1)
 
-      self.uncheckAllButtons()
-      
-      self.logic.currentScene += 1
-      self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
-      self.repopulateSurveyButtons()
+  def changeScene(self,factor):
+    self.uncheckAllButtons()
+    self.logic.currentScene += factor
+    
+    # comment the following line to prevent the threshold from resetting every time the view is changed
+    self.ui.imageThresholdSliderWidget.reset()
+    self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+    self.repopulateSurveyButtons()
+
 
   def onRandomizeBox(self, checkState):
     if checkState == qt.Qt.Checked:
@@ -413,9 +419,30 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.onRating(rating)
 
   def onRating(self,rating):
+    # prevents rating before any volumes have been loaded
     if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
       self.logic.recordRatingInTable(rating)
+
+      # iterate through all of the cells, if there is something there, add it to the total
+      #
+      totalRated = 0
+
+      for row in range(self.logic.surveyTable.GetNumberOfRows()):
+        for col in range(self.logic.surveyTable.GetNumberOfColumns()):
+          enteredValue = self.logic.surveyTable.GetCellText(row,col)
+          if enteredValue != "":
+            totalRated+=1
+
+      totalVolumes = self.logic.volumesArray.shape[0] * self.logic.volumesArray.shape[1]
+      progress = (totalRated/totalVolumes)*100
+      self.ui.progressBar.setValue(int(progress))
+
+      if progress == 100 and self.logic.surveyFinished != True:
+        slicer.util.infoDisplay("You have completed the survey. Choose a save path below, and press the Save button.")
+        self.logic.surveyFinished = True
+
     else:
+      slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
       self.uncheckAllButtons()
 
 
@@ -452,17 +479,24 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onSaveButton(self):
 
-    # Generate file name
-    import time
-    sceneSaveFilename = self.ui.resultsDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
+    if self.ui.progressBar.value == 100:
+      confirmation = True
 
-    slicer.mrmlScene.AddNode(self.logic.surveyTable)
-
-    # Save scene
-    if slicer.util.saveScene(sceneSaveFilename):
-      logging.info("Scene saved to: {0}".format(sceneSaveFilename))
     else:
-      logging.error("Scene saving failed")
+      confirmation = slicer.util.confirmYesNoDisplay("You have not yet completed the survey. Proceed?")
+
+    if confirmation:
+      # Generate file name
+      import time
+      sceneSaveFilename = self.ui.resultsDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
+
+      slicer.mrmlScene.AddNode(self.logic.surveyTable)
+
+      # Save scene
+      if slicer.util.saveScene(sceneSaveFilename):
+        logging.info("Scene saved to: {0}".format(sceneSaveFilename))
+      else:
+        logging.error("Scene saving failed")
 
 
 #
@@ -504,6 +538,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     col.SetName('Model_1')
 
     self.surveyStarted = False
+    self.surveyFinished = False
 
 
   def resetScene(self):
