@@ -192,6 +192,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.randomizeBox.stateChanged.connect(self.onRandomizeBox)
 
+
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
@@ -340,7 +341,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     try:
       # auto-select the input volume
       if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
-        for volume in self.logic.volumesArray[self.logic.currentScene]:
+        for volume in self.logic.volumesArray[self.logic.currentSceneIndex]:
           inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",volume)
 
           # prevents invalid volume error when loading the widget
@@ -372,7 +373,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
 
-      self.logic.currentScene = 0
+      self.logic.currentSceneIndex = 0
       self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
       if len(self.logic.volumesArray[0]) > 2:
@@ -380,26 +381,26 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       
 
   def onResetCameraButton(self):
-    self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+    self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
 
 
   def onPreviousButton(self):
     # prevent wraparound
-    if self.logic.currentScene!=0:
+    if self.logic.currentSceneIndex!=0:
       self.changeScene(-1)
 
   def onNextButton(self):
     # prevent wraparound
-    if self.logic.currentScene!=self.logic.numberOfScenes-1:
+    if self.logic.currentSceneIndex!=self.logic.numberOfScenes-1:
       self.changeScene(1)
 
   def changeScene(self,factor):
     self.uncheckAllButtons()
-    self.logic.currentScene += factor
-    
+    self.logic.currentSceneIndex += factor
+
     # comment the following line to prevent the threshold from resetting every time the view is changed
     self.ui.imageThresholdSliderWidget.reset()
-    self.logic.prepareDisplay(self.logic.currentScene,self.ui.imageThresholdSliderWidget.value)
+    self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
     self.repopulateSurveyButtons()
 
 
@@ -428,8 +429,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       totalRated = 0
 
       for row in range(self.logic.surveyTable.GetNumberOfRows()):
-        for col in range(self.logic.surveyTable.GetNumberOfColumns()):
-          enteredValue = self.logic.surveyTable.GetCellText(row,col)
+        # the -1 and +1 accounts for the scene column (column 0)
+        for col in range(self.logic.surveyTable.GetNumberOfColumns()-1):
+          enteredValue = self.logic.surveyTable.GetCellText(row,col+1)
           if enteredValue != "":
             totalRated+=1
 
@@ -448,13 +450,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def repopulateSurveyButtons(self):
 
-    currentlyDisplayedVolumes = self.logic.volumesArray[self.logic.currentScene]
+    currentlyDisplayedVolumes = self.logic.volumesArray[self.logic.currentSceneIndex]
     
     leftModelNumber = int(currentlyDisplayedVolumes[0].split("_")[3])
     rightModelNumber = int(currentlyDisplayedVolumes[1].split("_")[3])
 
-    leftModelRating = self.logic.surveyTable.GetCellText(self.logic.currentScene,leftModelNumber+1)
-    rightModelRating = self.logic.surveyTable.GetCellText(self.logic.currentScene,rightModelNumber+1)
+    selectedScene = int(currentlyDisplayedVolumes[0].split("_")[1])
+
+    leftModelRating = self.logic.surveyTable.GetCellText(selectedScene,leftModelNumber+1)
+    rightModelRating = self.logic.surveyTable.GetCellText(selectedScene,rightModelNumber+1)
 
     leftSurveyButton = "L_"+str(leftModelRating)
     rightSurveyButton = "R_"+str(rightModelRating)
@@ -494,9 +498,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       # Save scene
       if slicer.util.saveScene(sceneSaveFilename):
-        logging.info("Scene saved to: {0}".format(sceneSaveFilename))
+        slicer.util.infoDisplay("Scene saved to: {0}".format(sceneSaveFilename))
       else:
-        logging.error("Scene saving failed")
+        slicer.util.errorDisplay("Scene saving failed")
 
 
 #
@@ -525,7 +529,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   def clearVariables(self):
     self.volumesArray = np.zeros((0,0), dtype='object')
     self.shuffledArray = np.zeros((0,0), dtype='object')
-    self.currentScene = 0
+    self.currentSceneIndex = 0
     self.numberOfScenes = 0
 
     self.surveyTable = slicer.vtkMRMLTableNode()
@@ -670,6 +674,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       traceback.print_exc()
 
     if randomize: self.createShuffledArray()
+
+    for row in range(self.numberOfScenes):
+      self.surveyTable.AddEmptyRow()
 
 
 
@@ -847,23 +854,22 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     side = buttonId.split("_")[0]
     rating = int(buttonId.split("_")[1])
 
-    for row in range(self.numberOfScenes):
-      self.surveyTable.AddEmptyRow()
-
-    currentlyDisplayedVolumes = self.volumesArray[self.currentScene]
+    currentlyDisplayedVolumes = self.volumesArray[self.currentSceneIndex]
 
     if side == "L":
       selectedVolume = currentlyDisplayedVolumes[0]
-      selectedModel = int(selectedVolume.split("_")[3])
 
     elif side == "R":
       selectedVolume = currentlyDisplayedVolumes[1]
-      selectedModel = int(selectedVolume.split("_")[3])
 
     else:
       slicer.util.errorDisplay("ERROR: Invalid button Id")
 
-    self.surveyTable.SetCellText(self.currentScene,selectedModel+1,str(rating))
+    selectedModel = int(selectedVolume.split("_")[3])
+    selectedScene = int(selectedVolume.split("_")[1])
+
+    self.surveyTable.SetCellText(selectedScene,selectedModel+1,str(rating))
+    self.surveyTable.SetCellText(self.currentSceneIndex,0,str(self.currentSceneIndex))
 
 
   def threshold(self, inputVolume, imageThreshold, showResult=True):

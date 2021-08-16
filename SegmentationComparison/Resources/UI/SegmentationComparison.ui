@@ -166,6 +166,12 @@
         <property name="title">
          <string>Survey</string>
         </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
         <layout class="QFormLayout" name="formLayout_5">
          <item row="1" column="1">
           <widget class="QLabel" name="label_9">
