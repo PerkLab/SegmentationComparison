@@ -120,6 +120,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._updatingGUIFromParameterNode = False
 
     self.randomizeOutput = False
+    self.defaultMessage = "Rate the following volumes on a scale from 1 to 5:"
 
 
   def setup(self):
@@ -354,7 +355,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       traceback.print_exc()
 
 
-
   def onLoadButton(self):
     if self.logic.surveyStarted:
       confirmation = slicer.util.confirmYesNoDisplay("WARNING: This will delete all survey progress. Proceed?")
@@ -372,12 +372,36 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
+      self.loadSurveyMessage(self.ui.directorySelector.directory)
 
       self.logic.currentSceneIndex = 0
       self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
       if len(self.logic.volumesArray[0]) > 2:
         slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
+
+
+  def loadSurveyMessage(self, directory):
+    textFilesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".txt"))
+
+    changedMessage = False
+
+    for textIndex, textFile in enumerate(textFilesInDirectory):
+      name = str(os.path.basename(textFile))
+
+      path = directory + "/" + name
+
+      if name == "message.txt":
+        with open(path) as f:
+          message = f.read()
+
+        self.ui.surveyMessage.setText(message)
+        changedMessage = True
+
+    # reset to default if reloading without the message in the directory
+    if changedMessage == False:
+      self.ui.surveyMessage.setText(self.defaultMessage)
+
       
 
   def onResetCameraButton(self):
@@ -678,6 +702,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     for row in range(self.numberOfScenes):
       self.surveyTable.AddEmptyRow()
 
+
+  
 
 
   def centerAndRotateCamera(self, volume, viewNode):

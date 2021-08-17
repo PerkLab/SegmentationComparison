@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>550</width>
+    <width>568</width>
     <height>625</height>
    </rect>
   </property>
@@ -167,14 +167,14 @@
          <string>Survey</string>
         </property>
         <property name="checkable">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
         <property name="checked">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
         <layout class="QFormLayout" name="formLayout_5">
          <item row="1" column="1">
-          <widget class="QLabel" name="label_9">
+          <widget class="QLabel" name="surveyMessage">
            <property name="font">
             <font>
              <pointsize>8</pointsize>
@@ -436,7 +436,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="leftGroup"/>
   <buttongroup name="rightGroup"/>
+  <buttongroup name="leftGroup"/>
  </buttongroups>
 </ui>
