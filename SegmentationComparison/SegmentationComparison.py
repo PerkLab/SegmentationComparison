@@ -215,6 +215,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def onInputDirectorySelected(self, selectedPath):
     settings = qt.QSettings()
     settings.setValue(self.LAST_INPUT_PATH_SETTING, selectedPath)
+
+    self.ui.resultsDirectorySelector.directory = selectedPath
+    settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
+
     self.updateParameterNodeFromGUI()
 
   def onOutputDirectorySelected(self, selectedPath):
@@ -516,6 +520,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if confirmation:
       # Generate file name
       import time
+      
       sceneSaveFilename = self.ui.resultsDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
 
       slicer.mrmlScene.AddNode(self.logic.surveyTable)
