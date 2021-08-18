@@ -120,7 +120,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._updatingGUIFromParameterNode = False
 
     self.randomizeOutput = False
-    self.defaultMessage = "Rate the following volumes on a scale from 1 to 5:"
+    self.defaultMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
 
   def setup(self):
@@ -376,13 +376,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
-      self.loadSurveyMessage(self.ui.directorySelector.directory)
 
       self.logic.currentSceneIndex = 0
       self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
+      self.loadSurveyMessage(self.ui.directorySelector.directory)
+
       if len(self.logic.volumesArray[0]) > 2:
         slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
+
+      print("Load button Done")
 
 
   def loadSurveyMessage(self, directory):
@@ -523,7 +526,23 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       
       sceneSaveFilename = self.ui.resultsDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
 
-      slicer.mrmlScene.AddNode(self.logic.surveyTable)
+      
+      addedSurveyTable = slicer.mrmlScene.AddNode(self.logic.surveyTable)
+      addedSurveyTable.SetName("SurveyResultsTable")
+
+      volumesArrayTable = slicer.vtkMRMLTableNode()
+
+      for col in range(self.logic.volumesArray.shape[1]):
+       
+        column = volumesArrayTable.AddColumn()
+        column.SetName("View " + str(col))
+
+        for row in range(self.logic.volumesArray.shape[0]):
+          volumesArrayTable.AddEmptyRow()
+          volumesArrayTable.SetCellText(row,col,self.logic.volumesArray[row][col])
+
+      addedVolumesArrayTable = slicer.mrmlScene.AddNode(volumesArrayTable)
+      addedVolumesArrayTable.SetName("VolumesArrayTable")
 
       # Save scene
       if slicer.util.saveScene(sceneSaveFilename):
@@ -706,9 +725,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     for row in range(self.numberOfScenes):
       self.surveyTable.AddEmptyRow()
-
-
-  
 
 
   def centerAndRotateCamera(self, volume, viewNode):
