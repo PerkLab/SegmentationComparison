@@ -12,10 +12,10 @@ import numpy as np
 import math
 import time
 
+
 #
 # SegmentationComparison
 #
-
 
 class SegmentationComparison(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -31,16 +31,15 @@ class SegmentationComparison(ScriptedLoadableModule):
     # TODO: add here list of module names that this module requires
     self.parent.dependencies = []
     # TODO: replace with "Firstname Lastname (Organization)"
-    self.parent.contributors = ["John Doe (AnyWare Corp.)"]
+    self.parent.contributors = ["Keiran Barr (Perk Lab)"]
     # TODO: update with short description of the module and a link to online module documentation
     self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#SegmentationComparison">module documentation</a>.
+This module is for comparing volumes, and contains a built-in survey portion to record the preferences of the user.
+See more information in <a href="https://github.com/keiranbarr/SegmentationComparison">module documentation</a>.
 """
     # TODO: replace with organization, grant and thanks
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+This work was partially supported by the Queen's High School Internship in Computing
 """
 
     # Additional initialization step after application startup is complete
@@ -96,6 +95,16 @@ def registerSampleData():
     nodeNames='SegmentationComparison2'
   )
 
+
+# https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#override-application-close-behavior
+class CloseApplicationEventFilter(qt.QWidget):
+  def eventFilter(self, object, event):
+    if event.type() == qt.QEvent.Close:
+      event.accept()
+      return True
+    return False
+
+
 #
 # SegmentationComparisonWidget
 #
@@ -120,7 +129,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._updatingGUIFromParameterNode = False
 
     self.randomizeOutput = False
-    self.defaultMessage = "Rate the displayed volumes on a scale from 1 to 5:"
+    self.defaultSurveyMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
 
   def setup(self):
@@ -162,16 +171,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     lastInputPath = slicer.util.settingsValue(self.LAST_INPUT_PATH_SETTING, "")
     if lastInputPath != "":
-      self.ui.directorySelector.directory = lastInputPath
+      self.ui.inputDirectorySelector.directory = lastInputPath
 
-    lastResultsPath = slicer.util.settingsValue(self.LAST_OUTPUT_PATH_SETTING, "")
-    if lastResultsPath != "":
-      self.ui.resultsDirectorySelector.directory = lastResultsPath
+    lastOutputPath = slicer.util.settingsValue(self.LAST_OUTPUT_PATH_SETTING, "")
+    if lastOutputPath != "":
+      self.ui.outputDirectorySelector.directory = lastOutputPath
 
 
-    self.ui.directorySelector.connect("directoryChanged(const QString)", self.onInputDirectorySelected)
+    self.ui.inputDirectorySelector.connect("directoryChanged(const QString)", self.onInputDirectorySelected)
 
-    self.ui.resultsDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
+    self.ui.outputDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
 
     # Buttons
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
@@ -184,8 +193,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
 
-    self.ui.progressBar.connect('valueChanged(int value)', self.updateGUIFromParameterNode)
-
 
     self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
 
@@ -197,16 +204,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
-    index = 1
-    for button in self.ui.leftGroup.buttons():
-      buttonName = "L_"+str(index)
-      button.setAccessibleName(buttonName)
+    # sets the name of each button in the survey
+    # e.g. L_3 corresponds to the left side recieving 3 stars
+    self.setNameOfButtons(self.ui.leftGroup, "L_")
+    self.setNameOfButtons(self.ui.rightGroup, "R_")
 
-      index += 1
-
+    
+  def setNameOfButtons(self, buttonGroup, startOfName):
     index = 1
-    for button in self.ui.rightGroup.buttons():
-      buttonName = "R_"+str(index)
+    for button in buttonGroup.buttons():
+      buttonName = startOfName + str(index)
       button.setAccessibleName(buttonName)
 
       index += 1
@@ -216,22 +223,23 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     settings = qt.QSettings()
     settings.setValue(self.LAST_INPUT_PATH_SETTING, selectedPath)
 
-    self.ui.resultsDirectorySelector.directory = selectedPath
+    self.ui.outputDirectorySelector.directory = selectedPath
     settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
 
     self.updateParameterNodeFromGUI()
+
 
   def onOutputDirectorySelected(self, selectedPath):
     settings = qt.QSettings()
     settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
     self.updateParameterNodeFromGUI()
 
+
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
     """
     self.removeObservers()
-
 
   def enter(self):
     """
@@ -240,7 +248,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure parameter node exists and observed
     self.initializeParameterNode()
     slicer.util.setDataProbeVisible(False)  # We don't use data probe, and it takes valuable space from widget.
-
 
   def exit(self):
     """
@@ -258,7 +265,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Parameter node will be reset, do not use it anymore
     self.setParameterNode(None)
 
-
   def onSceneEndClose(self, caller, event):
     """
     Called just after the scene is closed.
@@ -266,7 +272,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # If this module is shown while the scene is closed then recreate a new parameter node immediately
     if self.parent.isEntered:
       self.initializeParameterNode()
-
 
   def initializeParameterNode(self):
     """
@@ -276,7 +281,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # so that when the scene is saved and reloaded, these settings are restored.
 
     self.setParameterNode(self.logic.getParameterNode())
-
 
   def setParameterNode(self, inputParameterNode):
     """
@@ -301,7 +305,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Initial GUI update
     self.updateGUIFromParameterNode()
 
-
   def updateGUIFromParameterNode(self, caller=None, event=None):
     """
     This method is called whenever parameter node is changed.
@@ -321,7 +324,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
 
-
   def updateParameterNodeFromGUI(self, caller=None, event=None):
     """
     This method is called when the user makes any change in the GUI.
@@ -340,6 +342,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode.EndModify(wasModified)
     
 
+
   # Threshold the selected volume
   def autoUpdateThresholdSlider(self):
 
@@ -354,9 +357,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
             self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
 
     except Exception as e:
-      slicer.util.errorDisplay("Failed to compute results: "+str(e))
+      slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
+
 
 
   def onLoadButton(self):
@@ -372,15 +376,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.ui.progressBar.reset()
         self.logic.surveyStarted=False
 
-      self.uncheckAllButtons()
+      self.uncheckSurveyButtons()
 
-      self.logic.loadVolumes(self.ui.directorySelector.directory, self.randomizeOutput)
-      self.logic.loadAndApplyTransforms(self.ui.directorySelector.directory)
+      self.logic.loadVolumes(self.ui.inputDirectorySelector.directory, self.randomizeOutput)
+      self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
 
       self.logic.currentSceneIndex = 0
       self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
 
-      self.loadSurveyMessage(self.ui.directorySelector.directory)
+      self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
 
       if len(self.logic.volumesArray[0]) > 2:
         slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
@@ -388,10 +392,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       print("Load button Done")
 
 
+
   def loadSurveyMessage(self, directory):
     textFilesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".txt"))
 
-    changedMessage = False
+    customMessage = False
 
     for textIndex, textFile in enumerate(textFilesInDirectory):
       name = str(os.path.basename(textFile))
@@ -403,11 +408,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
           message = f.read()
 
         self.ui.surveyMessage.setText(message)
-        changedMessage = True
+        customMessage = True
 
     # reset to default if reloading without the message in the directory
-    if changedMessage == False:
-      self.ui.surveyMessage.setText(self.defaultMessage)
+    if customMessage == False:
+      self.ui.surveyMessage.setText(self.defaultSurveyMessage)
 
       
 
@@ -420,17 +425,20 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.logic.currentSceneIndex!=0:
       self.changeScene(-1)
 
+
   def onNextButton(self):
     # prevent wraparound
     if self.logic.currentSceneIndex!=self.logic.numberOfScenes-1:
       self.changeScene(1)
 
+
   def changeScene(self,factor):
-    self.uncheckAllButtons()
+    self.uncheckSurveyButtons()
     self.logic.currentSceneIndex += factor
 
     # comment the following line to prevent the threshold from resetting every time the view is changed
     self.ui.imageThresholdSliderWidget.reset()
+
     self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
     self.repopulateSurveyButtons()
 
@@ -456,11 +464,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.logic.recordRatingInTable(rating)
 
       # iterate through all of the cells, if there is something there, add it to the total
-      #
       totalRated = 0
 
       for row in range(self.logic.surveyTable.GetNumberOfRows()):
-        # the -1 and +1 accounts for the scene column (column 0)
+        # the -1 and +1 accounts for the scene column (column 0 in the table)
         for col in range(self.logic.surveyTable.GetNumberOfColumns()-1):
           enteredValue = self.logic.surveyTable.GetCellText(row,col+1)
           if enteredValue != "":
@@ -476,10 +483,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     else:
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
-      self.uncheckAllButtons()
+      self.uncheckSurveyButtons()
 
 
   def repopulateSurveyButtons(self):
+    # this function uses the table of survey results to display prior answers
 
     currentlyDisplayedVolumes = self.logic.volumesArray[self.logic.currentSceneIndex]
     
@@ -500,7 +508,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         button.setChecked(True)
 
 
-  def uncheckAllButtons(self):
+  def uncheckSurveyButtons(self):
     self.ui.leftGroup.setExclusive(False)
     self.ui.rightGroup.setExclusive(False)
 
@@ -514,8 +522,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onSaveButton(self):
 
-    if self.ui.progressBar.value == 100:
+    if self.logic.surveyFinished:
       confirmation = True
+
+      # this line should prevent the warning to save your changes on exiting slicer
+      # but i think i have messed something up, as it doesnt work properly
+      filter = CloseApplicationEventFilter()
+      slicer.util.mainWindow().installEventFilter(filter)
 
     else:
       confirmation = slicer.util.confirmYesNoDisplay("You have not yet completed the survey. Proceed?")
@@ -524,7 +537,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       # Generate file name
       import time
       
-      sceneSaveFilename = self.ui.resultsDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
+      sceneSaveFilename = self.ui.outputDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
 
       
       addedSurveyTable = slicer.mrmlScene.AddNode(self.logic.surveyTable)
@@ -546,7 +559,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       # Save scene
       if slicer.util.saveScene(sceneSaveFilename):
-        slicer.util.infoDisplay("Scene saved to: {0}".format(sceneSaveFilename))
+        if self.logic.surveyFinished:
+          slicer.util.infoDisplay("Scene saved to: {0}. You can now close slicer without problem.".format(sceneSaveFilename))
+        else: 
+          slicer.util.infoDisplay("Scene saved to: {0}".format(sceneSaveFilename))
+
       else:
         slicer.util.errorDisplay("Scene saving failed")
 
@@ -573,11 +590,22 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     
     self.clearVariables()
     
+  def setDefaultParameters(self, parameterNode):
+    """
+    Initialize parameter node with default settings.
+    """
+    if not parameterNode.GetParameter("Threshold"):
+      parameterNode.SetParameter("Threshold", "0")
 
   def clearVariables(self):
     self.volumesArray = np.zeros((0,0), dtype='object')
     self.shuffledArray = np.zeros((0,0), dtype='object')
+
+    # scene index is different from scene number if randomize is checked
+    # scene index is the selected scene's index in the list of displayed scenes
+    # scene number is simply the identification of the scene itself
     self.currentSceneIndex = 0
+
     self.numberOfScenes = 0
 
     self.surveyTable = slicer.vtkMRMLTableNode()
@@ -591,6 +619,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     self.surveyStarted = False
     self.surveyFinished = False
+
 
 
   def resetScene(self):
@@ -613,13 +642,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # if the layout is not changed from the custom one, then it will result in weird problems when numbering the views
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
 
-
-  def setDefaultParameters(self, parameterNode):
-    """
-    Initialize parameter node with default settings.
-    """
-    if not parameterNode.GetParameter("Threshold"):
-      parameterNode.SetParameter("Threshold", "0")
 
 
   def loadAndApplyTransforms(self, directory):
@@ -654,7 +676,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
                 transformsArray[scene][model] = name
                 
-
+        # exception transform, will be applied to a specific volume
         elif name.startswith("Scene_") and name.endswith("_Transform"):
           print("Found exception transform")
 
@@ -673,7 +695,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
           slicer.util.infoDisplay("A transform doesn't follow the naming scheme. Use DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
 
     else:
-      slicer.util.infoDisplay("No transforms found in selected folder. To add a transform, save them in the same folder as the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+      print("No transforms found in selected folder. To add a transform, save them in the same folder as the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+
 
 
   def loadVolumes(self, directory, randomize):
@@ -727,6 +750,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       self.surveyTable.AddEmptyRow()
 
 
+
   def centerAndRotateCamera(self, volume, viewNode):
     # Compute the RAS coordinates of the center of the volume
     imageData = volume.GetImageData() 
@@ -767,7 +791,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
       displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
-    # TODO: dial in the values of this transfer function a little better
     upper = min(255, level + window/2)
     lower = max(0, level - window/2)
 
@@ -798,7 +821,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return displayNode
 
 
-  def setCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode):
+
+  def makeCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode):
 
     numberOfVolumes = len(volumesToDisplay)
 
@@ -840,6 +864,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     print(self.shuffledArray)
 
 
+
   def prepareDisplay(self, selectedScene, thresholdValue):
 
     # prevent errors from previous or next buttons when the volumes havent been loaded in yet
@@ -866,9 +891,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         existingViewNode = True
 
       else: 
-        self.setCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode)
+        self.makeCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode)
         slicer.app.layoutManager().setLayout(customID)
-
 
       # iterate through each volume, and display it in its own corresponding view
       for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
@@ -892,6 +916,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.app.layoutManager().setLayout(customID)
 
       slicer.app.setRenderPaused(False)
+
+
 
   def recordRatingInTable(self,buttonId):
     if not self.surveyStarted:
@@ -919,7 +945,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyTable.SetCellText(self.currentSceneIndex,0,str(self.currentSceneIndex))
 
 
-  def threshold(self, inputVolume, imageThreshold, showResult=True):
+  def threshold(self, inputVolume, imageThreshold):
 
     if not inputVolume:
       raise ValueError("Input volume is invalid")
