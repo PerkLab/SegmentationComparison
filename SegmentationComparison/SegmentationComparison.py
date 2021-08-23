@@ -208,6 +208,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.setNameOfButtons(self.ui.leftGroup, "L_")
     self.setNameOfButtons(self.ui.rightGroup, "R_")
 
+    # update randomizeOutput from checkbox in UI
     if self.ui.randomizeBox.checkState()==0:
       self.randomizeOutput = False
     else:
@@ -223,6 +224,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       index += 1
 
 
+  # set the output directory to the input directory as a default
   def onInputDirectorySelected(self, selectedPath):
     settings = qt.QSettings()
     settings.setValue(self.LAST_INPUT_PATH_SETTING, selectedPath)
@@ -347,18 +349,19 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     
 
 
-  # Threshold the selected volume
+  # Threshold the selected volume(s)
   def autoUpdateThresholdSlider(self):
 
     try:
-      # auto-select the input volume
+      # prevent thresholding when volumes have not yet been loaded
       if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
+        # iterate through currently displayed volumes
         for volume in self.logic.volumesArray[self.logic.currentSceneIndex]:
           inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",volume)
 
           # prevents invalid volume error when loading the widget
           if inputVolume is not None:
-            self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value, True)
+            self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value)
 
     except Exception as e:
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
@@ -394,6 +397,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
 
 
+  # change survey message if "message.txt" found in input directory
   def loadSurveyMessage(self, directory):
     textFilesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".txt"))
 
@@ -411,10 +415,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.ui.surveyMessage.setText(message)
         customMessage = True
 
-    # reset to default if reloading without the message in the directory
+    # reset to default if message is removed from directory and module is reloaded
     if customMessage == False:
       self.ui.surveyMessage.setText(self.defaultSurveyMessage)
-
       
 
   def onResetCameraButton(self):
@@ -437,7 +440,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.uncheckSurveyButtons()
     self.logic.currentSceneIndex += factor
 
-    # comment the following line to prevent the threshold from resetting every time the view is changed
     self.ui.imageThresholdSliderWidget.reset()
 
     self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
@@ -478,6 +480,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       progress = (totalRated/totalVolumes)*100
       self.ui.progressBar.setValue(int(progress))
 
+      # prevents the dialog from coming up repeatedly if changing answers
       if progress == 100 and self.logic.surveyFinished != True:
         slicer.util.infoDisplay("You have completed the survey. Choose a save path below, and press the Save button.")
         self.logic.surveyFinished = True
@@ -487,8 +490,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.uncheckSurveyButtons()
 
 
+  # this function uses the table of survey results to display prior answers
   def repopulateSurveyButtons(self):
-    # this function uses the table of survey results to display prior answers
 
     currentlyDisplayedVolumes = self.logic.volumesArray[self.logic.currentSceneIndex]
     
@@ -535,11 +538,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       confirmation = slicer.util.confirmYesNoDisplay("You have not yet completed the survey. Proceed?")
 
     if confirmation:
-      # Generate file name
       import time
       
       sceneSaveFilename = self.ui.outputDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
-
       
       addedSurveyTable = slicer.mrmlScene.AddNode(self.logic.surveyTable)
       addedSurveyTable.SetName("SurveyResultsTable")
@@ -561,7 +562,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       # Save scene
       if slicer.util.saveScene(sceneSaveFilename):
         if self.logic.surveyFinished:
-          slicer.util.infoDisplay("Scene saved to: {0}. You can now close slicer without problem.".format(sceneSaveFilename))
+          slicer.util.infoDisplay("Scene saved to: {0}. \n \n You can now close slicer to end the survey.".format(sceneSaveFilename))
         else: 
           slicer.util.infoDisplay("Scene saved to: {0}".format(sceneSaveFilename))
 
@@ -600,7 +601,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   def clearVariables(self):
     self.volumesArray = np.zeros((0,0), dtype='object')
-    self.shuffledArray = np.zeros((0,0), dtype='object')
 
     # scene index is different from scene number if randomize is checked
     # scene index is the selected scene's index in the list of displayed scenes
@@ -637,8 +637,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     cameras.UnRegister(None)
     for camera in cameras:
       slicer.mrmlScene.RemoveNode(camera)
-
-    self.clearVariables()
 
     # if the layout is not changed from the custom one, then it will result in weird problems when numbering the views
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
@@ -705,7 +703,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # improves readability of console output
     print('\n',"LOAD BUTTON PRESSED, RESETTING THE SCENE",'\n')
 
+    # these two must be called in tandem to fully reset the scene
     self.resetScene()
+    self.clearVariables()
 
     print("Checking directory: " + directory)
     
@@ -717,7 +717,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     try:
 
-      # this loop is for determining the dimensions of the array to store the volume references
+      # determining the dimensions of the array to store the volume references
       for volumeIndex, volumeFile in enumerate(volumesInDirectory):
         name = str(os.path.basename(volumeFile))
         # remove file extension
@@ -822,7 +822,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return displayNode
 
 
-
   def makeCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode):
 
     numberOfVolumes = len(volumesToDisplay)
@@ -906,8 +905,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         self.centerAndRotateCamera(volume, viewNode)
 
-        viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
         viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
+        viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
 
       if existingViewNode:
         # the pause allows for the camera centering to actually complete before switching views
