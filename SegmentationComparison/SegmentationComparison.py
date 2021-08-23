@@ -128,7 +128,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
 
-    self.randomizeOutput = False
     self.defaultSurveyMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
 
@@ -208,6 +207,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # e.g. L_3 corresponds to the left side recieving 3 stars
     self.setNameOfButtons(self.ui.leftGroup, "L_")
     self.setNameOfButtons(self.ui.rightGroup, "R_")
+
+    if self.ui.randomizeBox.checkState()==0:
+      self.randomizeOutput = False
+    else:
+      self.randomizeOutput = True
 
     
   def setNameOfButtons(self, buttonGroup, startOfName):
@@ -388,9 +392,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       if len(self.logic.volumesArray[0]) > 2:
         slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
-
-      print("Load button Done")
-
 
 
   def loadSurveyMessage(self, directory):
@@ -853,15 +854,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   # but could also be bad (if the user accidentally clicks it, and loses the progress of their survey)
   def createShuffledArray(self):
 
-    self.shuffledArray = self.volumesArray
-    
-    for scene in range(len(self.shuffledArray)):
-      np.random.shuffle(self.shuffledArray[scene])
+    for scene in range(len(self.volumesArray)):
+      np.random.shuffle(self.volumesArray[scene])
 
-    np.random.shuffle(self.shuffledArray)
+    np.random.shuffle(self.volumesArray)
 
     print("Shuffled array: ")
-    print(self.shuffledArray)
+    print(self.volumesArray)
 
 
 
