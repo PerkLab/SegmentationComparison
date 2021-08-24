@@ -460,8 +460,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
             totalRated+=1
 
       totalVolumes = self.logic.volumesArray.shape[0] * self.logic.volumesArray.shape[1]
-      progress = (totalRated/totalVolumes)*100
-      self.ui.progressBar.setValue(int(progress))
+      self.surveyProgress = (totalRated/totalVolumes)*100
+      self.ui.progressBar.setValue(int(self.surveyProgress))
 
       # prevents the dialog from coming up repeatedly if changing answers
       if self.surveyProgress == 100 and self.logic.surveyFinished != True:
@@ -476,6 +476,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def enablePreviousAndNextButtons(self):
     # this function exists to ensure that, when these two buttons are enabled,
     # they aren't allowing the user to click previous on the first volume.
+    # or next on the last volume.
 
     self.ui.previousButton.setEnabled(True)
     self.ui.nextButton.setEnabled(True)
