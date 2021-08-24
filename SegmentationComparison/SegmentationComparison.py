@@ -130,6 +130,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.defaultSurveyMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
+    self.leftGroupRated = False
+    self.rightGroupRated = False
+
+    self.surveyProgress = 0
+
 
   def setup(self):
     """
@@ -354,7 +359,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     try:
       # prevent thresholding when volumes have not yet been loaded
-      if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
+      if self.logic.volumesLoaded:
         # iterate through currently displayed volumes
         for volume in self.logic.volumesArray[self.logic.currentSceneIndex]:
           inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",volume)
@@ -367,7 +372,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
-
 
 
   def onLoadButton(self):
@@ -383,13 +387,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.ui.progressBar.reset()
         self.logic.surveyStarted=False
 
-      self.uncheckSurveyButtons()
-
       self.logic.loadVolumes(self.ui.inputDirectorySelector.directory, self.randomizeOutput)
       self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
 
-      self.logic.currentSceneIndex = 0
-      self.logic.prepareDisplay(0,self.ui.imageThresholdSliderWidget.value)
+      self.changeScene(0)
 
       self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
 
@@ -437,34 +438,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
 
   def changeScene(self,factor):
-    self.uncheckSurveyButtons()
-    self.logic.currentSceneIndex += factor
+    if self.logic.volumesLoaded:
+      self.leftGroupRated = False
+      self.rightGroupRated = False
 
-    self.ui.imageThresholdSliderWidget.reset()
+      self.uncheckSurveyButtons()
+      self.logic.currentSceneIndex += factor
 
-    self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
-    self.repopulateSurveyButtons()
+      #self.ui.imageThresholdSliderWidget.reset()
 
-
-  def onRandomizeBox(self, checkState):
-    if checkState == qt.Qt.Checked:
-      self.randomizeOutput = True
-    elif checkState == qt.Qt.Unchecked:
-      self.randomizeOutput = False
-
-
-  def onLeftGroup(self):
-    rating = self.ui.leftGroup.checkedButton().accessibleName
-    self.onRating(rating)
-
-  def onRightGroup(self):
-    rating = self.ui.rightGroup.checkedButton().accessibleName
-    self.onRating(rating)
-
-  def onRating(self,rating):
-    # prevents rating before any volumes have been loaded
-    if self.logic.volumesArray != np.zeros((0,0), dtype='object'):
-      self.logic.recordRatingInTable(rating)
+      self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
 
       # iterate through all of the cells, if there is something there, add it to the total
       totalRated = 0
@@ -481,9 +464,63 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.ui.progressBar.setValue(int(progress))
 
       # prevents the dialog from coming up repeatedly if changing answers
-      if progress == 100 and self.logic.surveyFinished != True:
-        slicer.util.infoDisplay("You have completed the survey. Choose a save path below, and press the Save button.")
+      if self.surveyProgress == 100 and self.logic.surveyFinished != True:
+        slicer.util.infoDisplay("Survey completed. Please press the Save button.")
         self.logic.surveyFinished = True
+
+      self.repopulateSurveyButtons()
+
+      self.enablePreviousAndNextButtons()
+
+
+  def enablePreviousAndNextButtons(self):
+    # this function exists to ensure that, when these two buttons are enabled,
+    # they aren't allowing the user to click previous on the first volume.
+
+    self.ui.previousButton.setEnabled(True)
+    self.ui.nextButton.setEnabled(True)
+
+    if self.logic.currentSceneIndex == 0:
+      self.ui.previousButton.setEnabled(False)
+
+    if self.logic.currentSceneIndex==self.logic.numberOfScenes-1:
+      self.ui.nextButton.setEnabled(False)
+
+
+  def onRandomizeBox(self, checkState):
+    if checkState == qt.Qt.Checked:
+      self.randomizeOutput = True
+    elif checkState == qt.Qt.Unchecked:
+      self.randomizeOutput = False
+
+
+  def onLeftGroup(self):
+    self.leftGroupRated = True
+
+    rating = self.ui.leftGroup.checkedButton().accessibleName
+    self.onRating(rating)
+
+
+  def onRightGroup(self):
+    self.rightGroupRated = True
+
+    rating = self.ui.rightGroup.checkedButton().accessibleName
+    self.onRating(rating)
+
+
+  def onRating(self,rating):
+
+    # prevents rating before any volumes have been loaded
+    if self.logic.volumesLoaded:
+
+      if self.rightGroupRated == True and self.leftGroupRated == True:
+        self.enablePreviousAndNextButtons()
+
+      else:
+        self.ui.previousButton.setEnabled(False)
+        self.ui.nextButton.setEnabled(False)
+
+      self.logic.recordRatingInTable(rating)
 
     else:
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
@@ -508,8 +545,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     allButtons = self.ui.leftGroup.buttons() + self.ui.rightGroup.buttons()
     for button in allButtons:
-      if button.accessibleName==leftSurveyButton or button.accessibleName==rightSurveyButton:
+      if button.accessibleName==rightSurveyButton:
         button.setChecked(True)
+        self.rightGroupRated = True
+
+      if button.accessibleName==leftSurveyButton:
+        button.setChecked(True)
+        self.leftGroupRated = True
 
 
   def uncheckSurveyButtons(self):
@@ -620,6 +662,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     self.surveyStarted = False
     self.surveyFinished = False
+
+    self.volumesLoaded = False
 
 
 
@@ -749,6 +793,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     for row in range(self.numberOfScenes):
       self.surveyTable.AddEmptyRow()
+
+    self.volumesLoaded = True
 
 
 
