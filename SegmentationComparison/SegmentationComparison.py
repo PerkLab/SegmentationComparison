@@ -219,6 +219,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     else:
       self.randomizeOutput = True
 
+    # Hide not used elements
+
+    self.ui.survey.setVisible(False)
+    self.ui.surveyNavigation.setVisible(False)
+    self.ui.save.setVisible(False)
+    self.ui.settingsCollapsibleButton.setVisible(False)
     
   def setNameOfButtons(self, buttonGroup, startOfName):
     index = 1
@@ -392,10 +398,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       self.changeScene(0)
 
-      self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
+      # self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
 
-      if len(self.logic.volumesArray[0]) > 2:
-        slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
+      # if len(self.logic.volumesArray[0]) > 2:
+      #   slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
 
 
   # change survey message if "message.txt" found in input directory
@@ -468,9 +474,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         slicer.util.infoDisplay("Survey completed. Please press the Save button.")
         self.logic.surveyFinished = True
 
-      self.repopulateSurveyButtons()
+      # self.repopulateSurveyButtons()
 
-      self.enablePreviousAndNextButtons()
+      # self.enablePreviousAndNextButtons()
 
 
   def enablePreviousAndNextButtons(self):
@@ -763,27 +769,17 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     try:
 
       # determining the dimensions of the array to store the volume references
+      # Assume there is only one scene, but you can compare as many models as you want
+      sceneNumber = 0
+      self.numberOfScenes = sceneNumber + 1
+      self.volumesArray.resize(self.numberOfScenes, len(volumesInDirectory))
+
       for volumeIndex, volumeFile in enumerate(volumesInDirectory):
-        name = str(os.path.basename(volumeFile))
+        name = str(volumeFile)
         # remove file extension
         name = name.replace('.nrrd','')
-
-        # Splits name according to this naming convention:
-        # Scene_x_Model_y.nrrd
-        sceneNumber = int(name.split("_")[1])
-        modelNumber = int(name.split("_")[3])
-        
-        if sceneNumber > volumeArrayXDim: volumeArrayXDim = sceneNumber
-        if modelNumber > volumeArrayYDim: volumeArrayYDim = modelNumber
-        
-        self.volumesArray.resize((volumeArrayXDim+1, volumeArrayYDim+1))
-
-        self.numberOfScenes = volumeArrayXDim+1
-
-        slicer.util.loadVolume(directory + "/" + volumeFile)
-
-        self.volumesArray[sceneNumber][modelNumber] = name
-      
+        loadedName = slicer.util.loadVolume(directory + "/" + volumeFile)
+        self.volumesArray[sceneNumber][volumeIndex] = loadedName.GetName()
 
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
@@ -954,6 +950,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
         viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
+
+      # Add identifiers/titles in the 3D views
+      for i in range(0, slicer.app.layoutManager().threeDViewCount):
+        viewWidget = slicer.app.layoutManager().threeDWidget(i)
+        viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, viewWidget.objectName)
+        viewWidget.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
 
       if existingViewNode:
         # the pause allows for the camera centering to actually complete before switching views
