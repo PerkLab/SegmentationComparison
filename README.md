@@ -22,11 +22,3 @@ After loading the input folder, the 3D view should display a group of volumes. B
 The user can drag the 3D view with left click, and can zoom in or out with the scroll wheel. 
 
 ![loadedVolumes](https://github.com/keiranbarr/SegmentationComparison/blob/master/loadedVolumes.PNG)
-
-## Information for developers
-
-1. *Volumes must follow the naming scheme "Scene_x_Model_y.nrrd"!*
-
-2. Transforms can be applied by placing them in the input folder before pressing the load button. If a transform is named "DefaultTransform.h5", it will be applied to all volumes in the folder. If it is named "Scene_x_Model_y_Transform.h5", then it will be applied to that specific volume. If it does not follow either naming scheme, it will not be loaded. 
-
-3. A custom survey message can be set by placing a file named "message.txt" in the input folder before pressing the load button. 
