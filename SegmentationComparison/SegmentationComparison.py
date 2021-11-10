@@ -778,8 +778,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         name = str(volumeFile)
         # remove file extension
         name = name.replace('.nrrd','')
-        loadedName = slicer.util.loadVolume(directory + "/" + volumeFile)
-        self.volumesArray[sceneNumber][volumeIndex] = loadedName.GetName()
+        loadedVolume = slicer.util.loadVolume(directory + "/" + volumeFile)
+        loadedVolume.SetName(name)
+        self.volumesArray[sceneNumber][volumeIndex] = loadedVolume.GetName()
 
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
