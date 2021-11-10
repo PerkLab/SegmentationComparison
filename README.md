@@ -9,7 +9,7 @@ This version of the software was modified to compare AI reconstructions of the s
 The following will describe the module and its basic functions.
 
 **Inputs:**
-This section is for selecting a folder, and loading volumes from that folder. If the randomize button is checked when loading, it will randomize the order in which the volumes are displayed. This is preferable for survey-taking, as it can reduce bias. 
+This section is for selecting a folder, and loading volumes from that folder. If the randomize button is checked when loading, it will randomize the order in which the volumes are displayed. Randomizing can reduce bias in the visual evaluarion. 
 
 **Comparison:**
 From top to bottom, this section contains:
