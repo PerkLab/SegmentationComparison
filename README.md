@@ -21,4 +21,4 @@ After loading the input folder, the 3D view should display a group of volumes. B
 
 The user can drag the 3D view with left click, and can zoom in or out with the scroll wheel. 
 
-![loadedVolumes](https://github.com/keiranbarr/SegmentationComparison/blob/master/loadedVolumes.PNG)
+![loadedVolumes](./loadedVolumes.PNG)
