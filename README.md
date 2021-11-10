@@ -17,7 +17,7 @@ From top to bottom, this section contains:
 2. A button to reset the camera to its original position. 
 
 **3D View:**
-After loading the input folder, the 3D view should display a group of volumes. By default, the camera will be centered on a posterior view of the volume. The name of An orientation marker is shown in the bottom right corner. 
+After loading the input folder, the 3D view should display a group of volumes. By default, the camera will be centered on a posterior view of the volume. The name of the volume is shown on the top right corner and an orientation marker is shown in the bottom right corner. 
 
 The user can drag the 3D view with left click, and can zoom in or out with the scroll wheel. 
 
