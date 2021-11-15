@@ -11,6 +11,7 @@ from slicer.util import VTKObservationMixin
 import numpy as np
 import math
 import time
+import random
 
 
 #
@@ -130,11 +131,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.defaultSurveyMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
-    self.leftGroupRated = False
-    self.rightGroupRated = False
-
     self.surveyProgress = 0
-
 
   def setup(self):
     """
@@ -197,13 +194,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
 
-
     self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
-
     self.ui.rightGroup.buttonClicked.connect(self.onRightGroup)
-
-    self.ui.randomizeBox.stateChanged.connect(self.onRandomizeBox)
-
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -219,12 +211,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     else:
       self.randomizeOutput = True
 
-    # Hide not used elements
-
-    self.ui.survey.setVisible(False)
-    self.ui.surveyNavigation.setVisible(False)
-    self.ui.save.setVisible(False)
-    self.ui.settingsCollapsibleButton.setVisible(False)
+    # Ignore randomize option because we always randomize
+    self.ui.randomizeBox.setVisible(False)
     
   def setNameOfButtons(self, buttonGroup, startOfName):
     index = 1
@@ -364,55 +352,60 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def autoUpdateThresholdSlider(self):
 
     try:
-      # prevent thresholding when volumes have not yet been loaded
-      if self.logic.volumesLoaded:
-        # iterate through currently displayed volumes
-        for volume in self.logic.volumesArray[self.logic.currentSceneIndex]:
-          inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode",volume)
-
+      # Prevent thresholding when volumes have not yet been loaded
+      if self.logic.listRandomPairs:
+        # Iterate through currently displayed volumes
+        currentSceneData = self.logic.listRandomPairs[self.logic.currentComparisonIndex]
+        for i in range(1, len(currentSceneData)):
+          volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[i])
+          inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
           # prevents invalid volume error when loading the widget
           if inputVolume is not None:
             self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value)
-
     except Exception as e:
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
 
-
   def onLoadButton(self):
+    numberOfComparisons = self.ui.numberOfComparisonsSpinBox.value
     if self.logic.surveyStarted:
       confirmation = slicer.util.confirmYesNoDisplay("WARNING: This will delete all survey progress. Proceed?")
-
     else: 
-      confirmation = slicer.util.confirmYesNoDisplay("Loading this folder will clear the scene. Proceed?")
+      confirmation = slicer.util.confirmYesNoDisplay("Would you like to compare " + str(numberOfComparisons) +
+                                                     " pairs of AI reconstructed volumes?")
 
-    if confirmation == True: 
-      
+    if confirmation == True:
+      # Reset the scene
+      self.logic.resetScene()
+      self.logic.clearVariables()
+
+      self.logic.numberOfComparisons = numberOfComparisons
+
       if self.logic.surveyStarted:
         self.ui.progressBar.reset()
         self.logic.surveyStarted=False
 
-      self.logic.loadVolumes(self.ui.inputDirectorySelector.directory, self.randomizeOutput)
-      self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
+      self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
+      self.logic.createListOfRandomPairs()
+
+      self.logic.setSurveyTable()
+
+      # self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
 
       self.changeScene(0)
 
-      # self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
+      self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
 
-      # if len(self.logic.volumesArray[0]) > 2:
-      #   slicer.util.infoDisplay("More than 2 models are being compared. The survey portion will not work as intended.")
-
-
-  # change survey message if "message.txt" found in input directory
   def loadSurveyMessage(self, directory):
+    # Change survey message if "message.txt" found in input directory
+
     textFilesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".txt"))
 
     customMessage = False
 
     for textIndex, textFile in enumerate(textFilesInDirectory):
       name = str(os.path.basename(textFile))
-
       path = directory + "/" + name
 
       if name == "message.txt":
@@ -422,144 +415,106 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.ui.surveyMessage.setText(message)
         customMessage = True
 
-    # reset to default if message is removed from directory and module is reloaded
+    # Reset to default if "message.txt" is not in directory
     if customMessage == False:
       self.ui.surveyMessage.setText(self.defaultSurveyMessage)
-      
 
   def onResetCameraButton(self):
-    self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
-
+    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
   def onPreviousButton(self):
     # prevent wraparound
-    if self.logic.currentSceneIndex!=0:
+    if self.logic.currentComparisonIndex != 0:
       self.changeScene(-1)
-
 
   def onNextButton(self):
     # prevent wraparound
-    if self.logic.currentSceneIndex!=self.logic.numberOfScenes-1:
+    if self.logic.currentComparisonIndex < self.logic.numberOfComparisons:
       self.changeScene(1)
 
+  def changeScene(self, factor):
+    # Change pair of images being evaluated. Factor -1 is used for previous image, 0 is for current image, and +1 is
+    self.uncheckSurveyButtons()
+    self.logic.currentComparisonIndex += factor
 
-  def changeScene(self,factor):
-    if self.logic.volumesLoaded:
-      self.leftGroupRated = False
-      self.rightGroupRated = False
+    # self.ui.imageThresholdSliderWidget.reset()
+    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
-      self.uncheckSurveyButtons()
-      self.logic.currentSceneIndex += factor
+    self.repopulateSurveyButtons()
+    self.enablePreviousAndNextButtons()
 
-      #self.ui.imageThresholdSliderWidget.reset()
+    # iterate through all of the cells, if there is something there, add it to the total
+    totalRated = 2
+    for row in range(self.logic.surveyTable.GetNumberOfRows()):
+      # The name column is column 0 in the table)
+      for col in range(1, self.logic.surveyTable.GetNumberOfColumns()):
+        enteredValue = self.logic.surveyTable.GetCellText(row, col)
+        if enteredValue != "":
+          totalRated += 1
 
-      self.logic.prepareDisplay(self.logic.currentSceneIndex,self.ui.imageThresholdSliderWidget.value)
+    totalComparisons = self.logic.numberOfComparisons * 2.0 # Comparisons come in pairs
+    self.surveyProgress = (totalRated / totalComparisons) * 100
+    self.ui.progressBar.setValue(int(self.surveyProgress))
 
-      # iterate through all of the cells, if there is something there, add it to the total
-      totalRated = 0
-
-      for row in range(self.logic.surveyTable.GetNumberOfRows()):
-        # the -1 and +1 accounts for the scene column (column 0 in the table)
-        for col in range(self.logic.surveyTable.GetNumberOfColumns()-1):
-          enteredValue = self.logic.surveyTable.GetCellText(row,col+1)
-          if enteredValue != "":
-            totalRated+=1
-
-      totalVolumes = self.logic.volumesArray.shape[0] * self.logic.volumesArray.shape[1]
-      self.surveyProgress = (totalRated/totalVolumes)*100
-      self.ui.progressBar.setValue(int(self.surveyProgress))
-
-      # prevents the dialog from coming up repeatedly if changing answers
-      if self.surveyProgress == 100 and self.logic.surveyFinished != True:
-        slicer.util.infoDisplay("Survey completed. Please press the Save button.")
-        self.logic.surveyFinished = True
-
-      # self.repopulateSurveyButtons()
-
-      # self.enablePreviousAndNextButtons()
-
+    # prevents the dialog from coming up repeatedly if changing answers
+    if self.surveyProgress == 100 and self.logic.surveyFinished != True:
+      slicer.util.infoDisplay("Last comparison reached. Please, finish scoring and then press the Save button.")
+      self.logic.surveyFinished = True
 
   def enablePreviousAndNextButtons(self):
-    # this function exists to ensure that, when these two buttons are enabled,
+    # This function exists to ensure that, when these two buttons are enabled,
     # they aren't allowing the user to click previous on the first volume.
-    # or next on the last volume.
+    # or next on the last volume. Also, the two compared models have to be rated
+    # before moving forward or back.
 
-    self.ui.previousButton.setEnabled(True)
-    self.ui.nextButton.setEnabled(True)
-
-    if self.logic.currentSceneIndex == 0:
+    if self.ui.leftGroup.checkedButton() and self.ui.rightGroup.checkedButton():
+      self.ui.previousButton.setEnabled(True)
+      self.ui.nextButton.setEnabled(True)
+    else:
       self.ui.previousButton.setEnabled(False)
-
-    if self.logic.currentSceneIndex==self.logic.numberOfScenes-1:
       self.ui.nextButton.setEnabled(False)
 
+    if self.logic.currentComparisonIndex == 0:
+      self.ui.previousButton.setEnabled(False)
 
-  def onRandomizeBox(self, checkState):
-    if checkState == qt.Qt.Checked:
-      self.randomizeOutput = True
-    elif checkState == qt.Qt.Unchecked:
-      self.randomizeOutput = False
-
+    if self.logic.currentComparisonIndex == self.logic.numberOfComparisons - 1:
+      self.ui.nextButton.setEnabled(False)
 
   def onLeftGroup(self):
-    self.leftGroupRated = True
-
     rating = self.ui.leftGroup.checkedButton().accessibleName
     self.onRating(rating)
 
-
   def onRightGroup(self):
-    self.rightGroupRated = True
-
     rating = self.ui.rightGroup.checkedButton().accessibleName
     self.onRating(rating)
 
-
-  def onRating(self,rating):
-
-    # prevents rating before any volumes have been loaded
-    if self.logic.volumesLoaded:
-
-      if self.rightGroupRated == True and self.leftGroupRated == True:
-        self.enablePreviousAndNextButtons()
-
-      else:
-        self.ui.previousButton.setEnabled(False)
-        self.ui.nextButton.setEnabled(False)
-
+  def onRating(self, rating):
+    # Prevents rating before any volumes have been loaded
+    if self.logic.scansAndModelsDict:
+      self.enablePreviousAndNextButtons()
       self.logic.recordRatingInTable(rating)
-
     else:
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
       self.uncheckSurveyButtons()
 
-
-  # this function uses the table of survey results to display prior answers
   def repopulateSurveyButtons(self):
+    # This function uses the table of survey results to display prior answers
 
-    currentlyDisplayedVolumes = self.logic.volumesArray[self.logic.currentSceneIndex]
+    currentlyDisplayedModels = self.logic.listRandomPairs[self.logic.currentComparisonIndex]
     
-    leftModelNumber = int(currentlyDisplayedVolumes[0].split("_")[3])
-    rightModelNumber = int(currentlyDisplayedVolumes[1].split("_")[3])
-
-    selectedScene = int(currentlyDisplayedVolumes[0].split("_")[1])
-
-    leftModelRating = self.logic.surveyTable.GetCellText(selectedScene,leftModelNumber+1)
-    rightModelRating = self.logic.surveyTable.GetCellText(selectedScene,rightModelNumber+1)
+    leftModelRating = self.logic.surveyTable.GetCellText(self.logic.currentComparisonIndex, self.logic.LEFT)
+    rightModelRating = self.logic.surveyTable.GetCellText(self.logic.currentComparisonIndex, self.logic.RIGHT)
 
     leftSurveyButton = "L_"+str(leftModelRating)
     rightSurveyButton = "R_"+str(rightModelRating)
 
     allButtons = self.ui.leftGroup.buttons() + self.ui.rightGroup.buttons()
     for button in allButtons:
-      if button.accessibleName==rightSurveyButton:
+      if button.accessibleName == rightSurveyButton:
         button.setChecked(True)
-        self.rightGroupRated = True
 
-      if button.accessibleName==leftSurveyButton:
+      if button.accessibleName == leftSurveyButton:
         button.setChecked(True)
-        self.leftGroupRated = True
-
 
   def uncheckSurveyButtons(self):
     self.ui.leftGroup.setExclusive(False)
@@ -572,13 +527,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.rightGroup.setExclusive(True)
     self.ui.leftGroup.setExclusive(True)
 
-
   def onSaveButton(self):
 
     if self.logic.surveyFinished:
       confirmation = True
 
-      # this line should prevent the warning to save your changes on exiting slicer
+      # This line should prevent the warning to save your changes on exiting slicer
       # but i think i have messed something up, as it doesnt work properly
       filter = CloseApplicationEventFilter()
       slicer.util.mainWindow().installEventFilter(filter)
@@ -591,23 +545,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       
       sceneSaveFilename = self.ui.outputDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
       
-      addedSurveyTable = slicer.mrmlScene.AddNode(self.logic.surveyTable)
-      addedSurveyTable.SetName("SurveyResultsTable")
-
-      volumesArrayTable = slicer.vtkMRMLTableNode()
-
-      for col in range(self.logic.volumesArray.shape[1]):
-       
-        column = volumesArrayTable.AddColumn()
-        column.SetName("View " + str(col))
-
-        for row in range(self.logic.volumesArray.shape[0]):
-          volumesArrayTable.AddEmptyRow()
-          volumesArrayTable.SetCellText(row,col,self.logic.volumesArray[row][col])
-
-      addedVolumesArrayTable = slicer.mrmlScene.AddNode(volumesArrayTable)
-      addedVolumesArrayTable.SetName("VolumesArrayTable")
-
       # Save scene
       if slicer.util.saveScene(sceneSaveFilename):
         if self.logic.surveyFinished:
@@ -617,7 +554,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       else:
         slicer.util.errorDisplay("Scene saving failed")
-
 
 #
 # SegmentationComparisonLogic
@@ -632,6 +568,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   Uses ScriptedLoadableModuleLogic base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
+
+  N_COLUMNS_VIEW = 2
+  N_ROWS_VIEW = 1
+  VIEW_FIRST_DIGITS = 587
+  LEFT = 1
+  RIGHT = 2
+  RESULTS_TABLE_NAME = "SurveyResultsTable"
 
   def __init__(self):
     """
@@ -649,36 +592,41 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       parameterNode.SetParameter("Threshold", "0")
 
   def clearVariables(self):
-    self.volumesArray = np.zeros((0,0), dtype='object')
-
-    # scene index is different from scene number if randomize is checked
-    # scene index is the selected scene's index in the list of displayed scenes
-    # scene number is simply the identification of the scene itself
-    self.currentSceneIndex = 0
-
-    self.numberOfScenes = 0
-
-    self.surveyTable = slicer.vtkMRMLTableNode()
-
-    col=self.surveyTable.AddColumn()
-    col.SetName('Scene #')
-    col=self.surveyTable.AddColumn()
-    col.SetName('Model_0')
-    col=self.surveyTable.AddColumn()
-    col.SetName('Model_1')
-
+    self.scansAndModelsDict = {}
+    self.currentComparisonIndex = 0
     self.surveyStarted = False
     self.surveyFinished = False
+    self.numberOfComparisons = 0
+    self.listRandomPairs = []
 
-    self.volumesLoaded = False
+  def setSurveyTable(self):
+    # Reset survey table used to store survey results
+    self.surveyTable = slicer.util.getFirstNodeByClassByName("vtkMRMLTableNode", self.RESULTS_TABLE_NAME)
+    if self.surveyTable:
+      slicer.mrmlScene.RemoveNode(self.surveyTable)
 
+    self.surveyTable = slicer.vtkMRMLTableNode()
+    addedSurveyTable = slicer.mrmlScene.AddNode(self.surveyTable)
+    addedSurveyTable.SetName(self.RESULTS_TABLE_NAME)
 
+    col = self.surveyTable.AddColumn()
+    col.SetName('Patient_sequence')
+    col = self.surveyTable.AddColumn()
+    col.SetName('Model_0')
+    col = self.surveyTable.AddColumn()
+    col.SetName('Model_1')
+
+    for row in range(self.numberOfComparisons):
+      self.surveyTable.AddEmptyRow()
+      evaluatedPairData = self.listRandomPairs[row]
+      namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
+                               self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
+      self.surveyTable.SetCellText(row, 0, namesVolumesToDisplay[0] + " vs " + namesVolumesToDisplay[1])
 
   def resetScene(self):
     slicer.mrmlScene.Clear()
 
-    # the following lines clean up things that aren't affected by clearing the scene
-
+    # The following lines clean up things that aren't affected by clearing the scene
     views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
     views.UnRegister(None)
     for view in views:
@@ -689,10 +637,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     for camera in cameras:
       slicer.mrmlScene.RemoveNode(camera)
 
-    # if the layout is not changed from the custom one, then it will result in weird problems when numbering the views
+    # If the layout is not changed from the custom one, then it will result in weird problems when numbering the views
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
-
-
 
   def loadAndApplyTransforms(self, directory):
     transformsInDirectory = list(f for f in os.listdir(directory) if f.endswith(".h5"))
@@ -742,59 +688,76 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         # does not follow the naming scheme
         else:
-          slicer.util.infoDisplay("A transform doesn't follow the naming scheme. Use DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+          slicer.util.infoDisplay("A transform doesn't follow the naming scheme. Use DefaultTransform.h5 "
+                                  "to set the default transform, and Scene_x_Model_y_Transform.h5 for "
+                                  "specific volumes")
 
     else:
-      print("No transforms found in selected folder. To add a transform, save them in the same folder as the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, and Scene_x_Model_y_Transform.h5 for specific volumes")
+      print("No transforms found in selected folder. To add a transform, save them in the same folder as "
+            "the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, "
+            "and Scene_x_Model_y_Transform.h5 for specific volumes")
 
+  def loadVolumes(self, directory):
+    # Load the volumes that will be compared.
+    # Store a dictionary with patient_sequence names as keys and lists of AI models as elements.
+    # For example, patient_sequence 405_axial was evaluated with the AI models UNet_1 and UNet_2.
 
-
-  def loadVolumes(self, directory, randomize):
-
-    # improves readability of console output
+    # Logging to the console
     print('\n',"LOAD BUTTON PRESSED, RESETTING THE SCENE",'\n')
 
-    # these two must be called in tandem to fully reset the scene
-    self.resetScene()
-    self.clearVariables()
-
+    # List nrrd volumes in indicated directory
     print("Checking directory: " + directory)
-    
     volumesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".nrrd"))
     print("Found volumes: " + str(volumesInDirectory))
 
-    volumeArrayXDim = 0
-    volumeArrayYDim = 0
-
+    # Load found volumes and create dictionary with their data
+    self.scansAndModelsDict = {}
     try:
-
-      # determining the dimensions of the array to store the volume references
-      # Assume there is only one scene, but you can compare as many models as you want
-      sceneNumber = 0
-      self.numberOfScenes = sceneNumber + 1
-      self.volumesArray.resize(self.numberOfScenes, len(volumesInDirectory))
-
       for volumeIndex, volumeFile in enumerate(volumesInDirectory):
         name = str(volumeFile)
-        # remove file extension
-        name = name.replace('.nrrd','')
+        name = name.replace('.nrrd','') # remove file extension
         loadedVolume = slicer.util.loadVolume(directory + "/" + volumeFile)
         loadedVolume.SetName(name)
-        self.volumesArray[sceneNumber][volumeIndex] = loadedVolume.GetName()
-
+        patiendId = name.split('_')[0]
+        modelName = "_".join(name.split('_')[1:]).split('Layers')[0] + 'Layers'
+        sequenceName = name.split('Layers_')[-1]
+        scanName = patiendId + "_" + sequenceName
+        if scanName in self.scansAndModelsDict:
+          self.scansAndModelsDict[scanName].append(modelName)
+        else:
+          self.scansAndModelsDict[scanName] = [modelName]
     except Exception as e:
-      slicer.util.errorDisplay("Ensure volumes follow the naming scheme: 'Scene_x_Model_x.nrrd': "+str(e))
+      slicer.util.errorDisplay("Ensure volumes follow the naming convention: "
+                               "[patient_id]_[AI_model_name]_[sequence_name].nrrd: "+str(e))
       import traceback
       traceback.print_exc()
+    return
 
-    if randomize: self.createShuffledArray()
+  def createListOfRandomPairs(self):
+    # Randomly make a list of pairs of images to be compared.
+    # The pairs must be volumes reconstructed with different AI models, but with the same patient_sequence
+    iteration = 0
+    count = 0
+    limit = 1000
+    while (iteration < self.numberOfComparisons) and (count < limit):
+      randomPatientSequence = random.choice(list(self.scansAndModelsDict))
+      modelsList = self.scansAndModelsDict[randomPatientSequence]
+      random.shuffle(modelsList)
+      randomModels = [randomPatientSequence]
 
-    for row in range(self.numberOfScenes):
-      self.surveyTable.AddEmptyRow()
+      # Make sure there are at least two models to compare for this patient_sequence
+      if len(modelsList) > 1:
+        randomModels.append(modelsList[0])
+        randomModels.append(modelsList[1])
+        self.listRandomPairs.append(randomModels)
+        iteration = iteration + 1
+      count = count + 1
 
-    self.volumesLoaded = True
+    if count >= limit:
+      print("Not enough pairs to be compared could be chosen after " + count + " iterations." +
+            "Increase the amount of models per patient_sequence.")
 
-
+    return
 
   def centerAndRotateCamera(self, volume, viewNode):
     # Compute the RAS coordinates of the center of the volume
@@ -875,7 +838,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     for rowIndex in range(numberOfRows):
       customLayout += '<item><layout type="horizontal">'
       for colIndex in range(numberOfColumns):
-
         if viewIndex < numberOfVolumes: 
           name = str(viewIndex + firstViewNode)
           tag = volumesToDisplay[viewIndex]
@@ -891,71 +853,54 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not slicer.app.layoutManager().layoutLogic().GetLayoutNode().SetLayoutDescription(customLayoutId, customLayout):
         slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
 
+  def nameFromPatientSequenceAndModel(self, patientSequence, model):
+    # Get the full volume name by combining elements of patientSequence and model
+    patientId = patientSequence.split("_")[0]
+    volumeName = str(patientId) + "_" + model + "_" + "_".join(patientSequence.split("_")[1:])
+    return volumeName
 
-  # currently, this function will shuffle every time the load volumes button is called
-  # this could be good (for testing the randomization feature quickly)
-  # but could also be bad (if the user accidentally clicks it, and loses the progress of their survey)
-  def createShuffledArray(self):
+  def prepareDisplay(self, thresholdValue):
+    # Prepare views and show models in each view
 
-    for scene in range(len(self.volumesArray)):
-      np.random.shuffle(self.volumesArray[scene])
-
-    np.random.shuffle(self.volumesArray)
-
-    print("Shuffled array: ")
-    print(self.volumesArray)
-
-
-
-  def prepareDisplay(self, selectedScene, thresholdValue):
-
-    # prevent errors from previous or next buttons when the volumes havent been loaded in yet
-    if self.volumesArray != np.zeros((0,0), dtype='object'):
-
-      # Code related to the 3D view is taken from here: https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
+    # Prevent errors from previous or next buttons when the volumes haven't been loaded in yet
+    if self.scansAndModelsDict:
+      # Code related to the 3D view is taken from here:
+      # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
       slicer.app.setRenderPaused(True)
 
-      customID = 567 + selectedScene
-
-      numberOfColumns = 2
-      numberOfVolumes = len(self.volumesArray[selectedScene])
-      numberOfRows = int(math.ceil(numberOfVolumes/numberOfColumns))
-      
-      firstViewNode = selectedScene*numberOfVolumes
-      volumesToDisplay = self.volumesArray[selectedScene]
-
+      customID = self.VIEW_FIRST_DIGITS + self.currentComparisonIndex
+      evaluatedPairData = self.listRandomPairs[self.currentComparisonIndex]
+      namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
+                               self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
       existingViewNode = False
 
-      # if the view node already exists
-      # center the camera BEFORE switching views
-      # this prevents the user from seeing the camera centering
-      if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+volumesToDisplay[0]):
+      # If the view node already exists, center the camera before switching views
+      # This prevents the user from seeing the camera centering
+      if slicer.util.getFirstNodeByClassByName("vtkMRMLViewNode","View"+namesVolumesToDisplay[0]+str(customID)):
         existingViewNode = True
-
       else: 
-        self.makeCustomView(customID, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode)
+        self.makeCustomView(customID, self.N_ROWS_VIEW, self.N_COLUMNS_VIEW, namesVolumesToDisplay, 0)
         slicer.app.layoutManager().setLayout(customID)
 
-      # iterate through each volume, and display it in its own corresponding view
-      for volumeIndex, volumeName in enumerate(self.volumesArray[selectedScene]):
-
+      # Iterate through each volume, and display it in its own corresponding view
+      for volumeIndex, volumeName in enumerate(namesVolumesToDisplay):
         volume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
 
         viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
         viewNode.LinkedControlOn()
 
-        displayNode = self.setVolumeRenderingProperty(volume,100,thresholdValue)
+        displayNode = self.setVolumeRenderingProperty(volume, 100, thresholdValue)
         displayNode.SetViewNodeIDs([viewNode.GetID()])
 
         self.centerAndRotateCamera(volume, viewNode)
-
         viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
         viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
 
       # Add identifiers/titles in the 3D views
       for i in range(0, slicer.app.layoutManager().threeDViewCount):
         viewWidget = slicer.app.layoutManager().threeDWidget(i)
-        viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, viewWidget.objectName)
+        viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight,
+                                                           viewWidget.objectName.split("ThreeDWidget")[1])
         viewWidget.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
 
       if existingViewNode:
@@ -965,40 +910,28 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       slicer.app.setRenderPaused(False)
 
-
-
-  def recordRatingInTable(self,buttonId):
+  def recordRatingInTable(self, buttonId):
     if not self.surveyStarted:
-      self.surveyStarted=True
+      self.surveyStarted = True
 
-    # split the name
+    # Split the name
     side = buttonId.split("_")[0]
     rating = int(buttonId.split("_")[1])
-
-    currentlyDisplayedVolumes = self.volumesArray[self.currentSceneIndex]
+    currentlyDisplayedVolumes = self.listRandomPairs[self.currentComparisonIndex]
 
     if side == "L":
-      selectedVolume = currentlyDisplayedVolumes[0]
-
-    elif side == "R":
       selectedVolume = currentlyDisplayedVolumes[1]
-
+      self.surveyTable.SetCellText(self.currentComparisonIndex, self.LEFT, str(rating))
+    elif side == "R":
+      selectedVolume = currentlyDisplayedVolumes[2]
+      self.surveyTable.SetCellText(self.currentComparisonIndex, self.RIGHT, str(rating))
     else:
       slicer.util.errorDisplay("ERROR: Invalid button Id")
 
-    selectedModel = int(selectedVolume.split("_")[3])
-    selectedScene = int(selectedVolume.split("_")[1])
-
-    self.surveyTable.SetCellText(selectedScene,selectedModel+1,str(rating))
-    self.surveyTable.SetCellText(self.currentSceneIndex,0,str(self.currentSceneIndex))
-
-
   def threshold(self, inputVolume, imageThreshold):
-
     if not inputVolume:
       raise ValueError("Input volume is invalid")
-
-    self.setVolumeRenderingProperty(inputVolume,50,imageThreshold)
+    self.setVolumeRenderingProperty(inputVolume, 50, imageThreshold)
 
 #
 # SegmentationComparisonTest
