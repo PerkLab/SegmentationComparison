@@ -131,8 +131,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.defaultSurveyMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
-    self.surveyProgress = 0
-
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
@@ -382,6 +380,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
       self.logic.numberOfComparisons = numberOfComparisons
 
+      # Adjust progressbar according to the number of comparisons
+      self.ui.progressBar.setMinimum(0)
+      self.ui.progressBar.setMaximum(numberOfComparisons)
+      self.ui.progressBar.setFormat("%v of " + str(numberOfComparisons))
+
       if self.logic.surveyStarted:
         self.ui.progressBar.reset()
         self.logic.surveyStarted=False
@@ -443,21 +446,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.repopulateSurveyButtons()
     self.enablePreviousAndNextButtons()
 
-    # iterate through all of the cells, if there is something there, add it to the total
-    totalRated = 2
-    for row in range(self.logic.surveyTable.GetNumberOfRows()):
-      # The name column is column 0 in the table)
-      for col in range(1, self.logic.surveyTable.GetNumberOfColumns()):
-        enteredValue = self.logic.surveyTable.GetCellText(row, col)
-        if enteredValue != "":
-          totalRated += 1
-
-    totalComparisons = self.logic.numberOfComparisons * 2.0 # Comparisons come in pairs
-    self.surveyProgress = (totalRated / totalComparisons) * 100
-    self.ui.progressBar.setValue(int(self.surveyProgress))
+    self.ui.progressBar.setValue(self.logic.currentComparisonIndex + 1)
 
     # prevents the dialog from coming up repeatedly if changing answers
-    if self.surveyProgress == 100 and self.logic.surveyFinished != True:
+    if self.logic.currentComparisonIndex == (self.logic.numberOfComparisons - 1) and self.logic.surveyFinished != True:
       slicer.util.infoDisplay("Last comparison reached. Please, finish scoring and then press the Save button.")
       self.logic.surveyFinished = True
 
@@ -542,18 +534,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     if confirmation:
       import time
-      
-      sceneSaveFilename = self.ui.outputDirectorySelector.directory + "/saved-scene-" + time.strftime("%Y%m%d-%H%M%S") + ".mrb"
-      
+      sceneSaveFilename = self.ui.outputDirectorySelector.directory + "/saved-results-" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
+      self.surveyTable = slicer.util.getFirstNodeByClassByName("vtkMRMLTableNode", self.logic.RESULTS_TABLE_NAME)
+
       # Save scene
-      if slicer.util.saveScene(sceneSaveFilename):
+      if self.surveyTable and slicer.util.saveNode(self.surveyTable, sceneSaveFilename):
         if self.logic.surveyFinished:
-          slicer.util.infoDisplay("Scene saved to: {0}. \n \n You can now close slicer to end the survey.".format(sceneSaveFilename))
+          slicer.util.infoDisplay("Results saved to: {0}. \n \n You can now close slicer to end the survey.".format(sceneSaveFilename))
         else: 
-          slicer.util.infoDisplay("Scene saved to: {0}".format(sceneSaveFilename))
+          slicer.util.infoDisplay("Results saved to: {0}".format(sceneSaveFilename))
 
       else:
-        slicer.util.errorDisplay("Scene saving failed")
+        slicer.util.errorDisplay("Results could not be saved.")
 
 #
 # SegmentationComparisonLogic
@@ -572,8 +564,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   N_COLUMNS_VIEW = 2
   N_ROWS_VIEW = 1
   VIEW_FIRST_DIGITS = 587
-  LEFT = 1
-  RIGHT = 2
+  LEFT = 2
+  RIGHT = 4
   RESULTS_TABLE_NAME = "SurveyResultsTable"
 
   def __init__(self):
@@ -610,18 +602,24 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     addedSurveyTable.SetName(self.RESULTS_TABLE_NAME)
 
     col = self.surveyTable.AddColumn()
-    col.SetName('Patient_sequence')
+    col.SetName('Comparison')
     col = self.surveyTable.AddColumn()
-    col.SetName('Model_0')
+    col.SetName('Model_L')
     col = self.surveyTable.AddColumn()
-    col.SetName('Model_1')
+    col.SetName('Score_L')
+    col = self.surveyTable.AddColumn()
+    col.SetName('Model_R')
+    col = self.surveyTable.AddColumn()
+    col.SetName('Score_R')
 
     for row in range(self.numberOfComparisons):
       self.surveyTable.AddEmptyRow()
       evaluatedPairData = self.listRandomPairs[row]
       namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
                                self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
-      self.surveyTable.SetCellText(row, 0, namesVolumesToDisplay[0] + " vs " + namesVolumesToDisplay[1])
+      self.surveyTable.SetCellText(row, 0, str(row + 1))
+      self.surveyTable.SetCellText(row, 1, namesVolumesToDisplay[0])
+      self.surveyTable.SetCellText(row, 3, namesVolumesToDisplay[1])
 
   def resetScene(self):
     slicer.mrmlScene.Clear()
