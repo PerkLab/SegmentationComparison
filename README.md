@@ -20,7 +20,7 @@ From top to bottom, this section contains:
 5. A button to save the scene, which contains the final results.
 
 **Settings:**
-You can indicate here the directory where the csv file containing the results of the sruvey will be saved.
+You can indicate here the directory where the csv file containing the results of the survey will be saved. The format of the name of the resulting file is saved-results-[Year][Month][Day]-[Hour][Minutes][Seconds].csv
 
 **3D View:**
 After loading the input folder, the 3D view should display a pair of volumes. By default, the camera will be centered on a posterior view of the volume. The name of the volume is shown on the top right corner and an orientation marker is shown in the bottom right corner.
