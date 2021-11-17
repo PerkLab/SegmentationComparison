@@ -448,11 +448,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.progressBar.setValue(self.logic.currentComparisonIndex + 1)
 
-    # prevents the dialog from coming up repeatedly if changing answers
-    if self.logic.currentComparisonIndex == (self.logic.numberOfComparisons - 1) and self.logic.surveyFinished != True:
-      slicer.util.infoDisplay("Last comparison reached. Please, finish scoring and then press the Save button.")
-      self.logic.surveyFinished = True
-
   def enablePreviousAndNextButtons(self):
     # This function exists to ensure that, when these two buttons are enabled,
     # they aren't allowing the user to click previous on the first volume.
@@ -485,6 +480,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.logic.scansAndModelsDict:
       self.enablePreviousAndNextButtons()
       self.logic.recordRatingInTable(rating)
+
+      # Send a message when the last score is assigned
+      if self.logic.currentComparisonIndex == (self.logic.numberOfComparisons - 1) and \
+              self.ui.leftGroup.checkedButton() and self.ui.rightGroup.checkedButton() \
+              and self.logic.surveyFinished != True:
+        slicer.util.infoDisplay("Last score assigned. Please, press the Save button.")
+        self.logic.surveyFinished = True
     else:
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
       self.uncheckSurveyButtons()
