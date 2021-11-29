@@ -718,10 +718,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         name = name.replace('.nrrd','') # remove file extension
         loadedVolume = slicer.util.loadVolume(directory + "/" + volumeFile)
         loadedVolume.SetName(name)
-        patiendId = name.split('_')[0]
-        modelName = "_".join(name.split('_')[1:]).split('Layers')[0] + 'Layers'
-        sequenceName = name.split('Layers_')[-1]
+
+        patiendId, modelName, sequenceName = name.split('_')
         scanName = patiendId + "_" + sequenceName
+
         if scanName in self.scansAndModelsDict:
           self.scansAndModelsDict[scanName].append(modelName)
         else:
