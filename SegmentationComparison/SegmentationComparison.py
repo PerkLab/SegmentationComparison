@@ -9,6 +9,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import numpy as np
+import pandas as pd
 import math
 import time
 import random
@@ -116,8 +117,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  LAST_INPUT_PATH_SETTING="SegmentationComparison/LastInputPath"
-  LAST_OUTPUT_PATH_SETTING="SegmentationComparison/LastOutputPath"
+  LAST_INPUT_PATH_SETTING = "SegmentationComparison/LastInputPath"
+  LAST_OUTPUT_PATH_SETTING = "SegmentationComparison/LastOutputPath"
+  LAST_INPUT_CSV_PATH_SETTING = "SegmentationComparison/LastInputCSVPath"
 
   def __init__(self, parent=None):
     """
@@ -164,7 +166,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
-
+    # TODO: fix threshold
     self.ui.imageThresholdSliderWidget.connect(
         "valueChanged(double)", self.autoUpdateThresholdSlider)
 
@@ -176,24 +178,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if lastOutputPath != "":
       self.ui.outputDirectorySelector.directory = lastOutputPath
 
-
-    self.ui.inputDirectorySelector.connect("directoryChanged(const QString)", self.onInputDirectorySelected)
-
-    self.ui.outputDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
-
-    # Buttons
+    # Inputs
+    self.ui.newTableRadioButton.toggled.connect(self.ui.csvPathSelector.setDisabled)
+    self.ui.csvPathSelector.connect("currentPathChanged(const QString)", self.onCSVPathSelected)
+    self.ui.inputDirectorySelector.connect("directoryChanged(const QString)", self.onInputVolumeDirectorySelected)
     self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
 
-    self.ui.nextButton.connect('clicked(bool)', self.onNextButton)
-
-    self.ui.previousButton.connect('clicked(bool)', self.onPreviousButton)
-
+    # Comparison
     self.ui.resetCameraButton.connect('clicked(bool)', self.onResetCameraButton)
-
-    self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
-
     self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
     self.ui.rightGroup.buttonClicked.connect(self.onRightGroup)
+    self.ui.nextButton.connect('clicked(bool)', self.onNextButton)
+    self.ui.previousButton.connect('clicked(bool)', self.onPreviousButton)
+    self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
+
+    # Settings
+    self.ui.outputDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
@@ -202,15 +202,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # e.g. L_3 corresponds to the left side recieving 3 stars
     self.setNameOfButtons(self.ui.leftGroup, "L_")
     self.setNameOfButtons(self.ui.rightGroup, "R_")
-
-    # update randomizeOutput from checkbox in UI
-    if self.ui.randomizeBox.checkState()==0:
-      self.randomizeOutput = False
-    else:
-      self.randomizeOutput = True
-
-    # Ignore randomize option because we always randomize
-    self.ui.randomizeBox.setVisible(False)
     
   def setNameOfButtons(self, buttonGroup, startOfName):
     index = 1
@@ -222,12 +213,24 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
 
   # set the output directory to the input directory as a default
-  def onInputDirectorySelected(self, selectedPath):
+  def onInputVolumeDirectorySelected(self, selectedPath):
     settings = qt.QSettings()
     settings.setValue(self.LAST_INPUT_PATH_SETTING, selectedPath)
 
-    self.ui.outputDirectorySelector.directory = selectedPath
-    settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
+    if self.ui.newTableRadioButton.isChecked():
+      self.ui.outputDirectorySelector.directory = selectedPath
+      settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
+
+    self.updateParameterNodeFromGUI()
+
+
+  def onCSVPathSelected(self, selectedPath):
+    settings = qt.QSettings()
+    settings.setValue(self.LAST_INPUT_CSV_PATH_SETTING, selectedPath)
+
+    lastOutputPath = os.path.abspath(os.path.join(selectedPath, os.pardir))
+    self.ui.outputDirectorySelector.directory = lastOutputPath
+    settings.setValue(self.LAST_OUTPUT_PATH_SETTING, lastOutputPath)
 
     self.updateParameterNodeFromGUI()
 
@@ -343,17 +346,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.ui.imageThresholdSliderWidget.value))
 
     self._parameterNode.EndModify(wasModified)
-    
-
 
   # Threshold the selected volume(s)
   def autoUpdateThresholdSlider(self):
 
     try:
       # Prevent thresholding when volumes have not yet been loaded
-      if self.logic.listRandomPairs:
+      if self.logic.nextPair:
         # Iterate through currently displayed volumes
-        currentSceneData = self.logic.listRandomPairs[self.logic.currentComparisonIndex]
+        currentSceneData = self.logic.nextPair
         for i in range(1, len(currentSceneData)):
           volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[i])
           inputVolume = slicer.util.getFirstNodeByClassByName("vtkMRMLScalarVolumeNode", volumeName)
@@ -366,33 +367,27 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       traceback.print_exc()
 
   def onLoadButton(self):
-    numberOfComparisons = self.ui.numberOfComparisonsSpinBox.value
     if self.logic.surveyStarted:
       confirmation = slicer.util.confirmYesNoDisplay("WARNING: This will delete all survey progress. Proceed?")
-    else: 
-      confirmation = slicer.util.confirmYesNoDisplay("Would you like to compare " + str(numberOfComparisons) +
-                                                     " pairs of AI reconstructed volumes?")
+    else:
+      confirmation = True
 
-    if confirmation == True:
+    if confirmation:
       # Reset the scene
       self.logic.resetScene()
-      self.logic.clearVariables()
-
-      self.logic.numberOfComparisons = numberOfComparisons
-
-      # Adjust progressbar according to the number of comparisons
-      self.ui.progressBar.setMinimum(0)
-      self.ui.progressBar.setMaximum(numberOfComparisons)
-      self.ui.progressBar.setFormat("%v of " + str(numberOfComparisons))
 
       if self.logic.surveyStarted:
-        self.ui.progressBar.reset()
-        self.logic.surveyStarted=False
+        self.logic.surveyStarted = False
 
+      # TODO: add loading progress dialog box and prevent GUI changes
       self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
-      self.logic.createListOfRandomPairs()
+      self.logic.setSurveyHistory()
 
-      self.logic.setSurveyTable()
+      csvPath = self.ui.csvDirectorySelector.directory if self.ui.existingTableRadioButton.isChecked() else None
+      try:
+        self.logic.setSurveyTable(csvPath)
+      except Exception as e:
+        slicer.util.errorDisplay(f"Failed to load {csvPath}: {str(e)}")
 
       # self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
 
@@ -431,9 +426,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.changeScene(-1)
 
   def onNextButton(self):
-    # prevent wraparound
-    if self.logic.currentComparisonIndex < self.logic.numberOfComparisons:
-      self.changeScene(1)
+    self.changeScene(1)
 
   def changeScene(self, factor):
     # Change pair of images being evaluated. Factor -1 is used for previous image, 0 is for current image, and +1 is
@@ -441,12 +434,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic.currentComparisonIndex += factor
 
     # self.ui.imageThresholdSliderWidget.reset()
+    self.logic.getNextPair()
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
-
+    self.logic.addRecordInTable()
     self.repopulateSurveyButtons()
     self.enablePreviousAndNextButtons()
-
-    self.ui.progressBar.setValue(self.logic.currentComparisonIndex + 1)
 
   def enablePreviousAndNextButtons(self):
     # This function exists to ensure that, when these two buttons are enabled,
@@ -464,9 +456,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.logic.currentComparisonIndex == 0:
       self.ui.previousButton.setEnabled(False)
 
-    if self.logic.currentComparisonIndex == self.logic.numberOfComparisons - 1:
-      self.ui.nextButton.setEnabled(False)
-
   def onLeftGroup(self):
     rating = self.ui.leftGroup.checkedButton().accessibleName
     self.onRating(rating)
@@ -480,21 +469,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.logic.scansAndModelsDict:
       self.enablePreviousAndNextButtons()
       self.logic.recordRatingInTable(rating)
-
-      # Send a message when the last score is assigned
-      if self.logic.currentComparisonIndex == (self.logic.numberOfComparisons - 1) and \
-              self.ui.leftGroup.checkedButton() and self.ui.rightGroup.checkedButton() \
-              and self.logic.surveyFinished != True:
-        slicer.util.infoDisplay("Last score assigned. Please, press the Save button.")
-        self.logic.surveyFinished = True
     else:
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
       self.uncheckSurveyButtons()
 
+  # TODO: remove?
   def repopulateSurveyButtons(self):
     # This function uses the table of survey results to display prior answers
-
-    currentlyDisplayedModels = self.logic.listRandomPairs[self.logic.currentComparisonIndex]
     
     leftModelRating = self.logic.surveyTable.GetCellText(self.logic.currentComparisonIndex, self.logic.LEFT)
     rightModelRating = self.logic.surveyTable.GetCellText(self.logic.currentComparisonIndex, self.logic.RIGHT)
@@ -522,32 +503,36 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.leftGroup.setExclusive(True)
 
   def onSaveButton(self):
-
     if self.logic.surveyFinished:
       confirmation = True
-
       # This line should prevent the warning to save your changes on exiting slicer
       # but i think i have messed something up, as it doesnt work properly
       filter = CloseApplicationEventFilter()
       slicer.util.mainWindow().installEventFilter(filter)
-
     else:
       confirmation = slicer.util.confirmYesNoDisplay("You have not yet completed the survey. Proceed?")
 
-    if confirmation:
-      import time
-      sceneSaveFilename = self.ui.outputDirectorySelector.directory + "/saved-results-" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
-      self.surveyTable = slicer.util.getFirstNodeByClassByName("vtkMRMLTableNode", self.logic.RESULTS_TABLE_NAME)
+    try:
+      if confirmation:
+        # Save pandas dataframe to csv
+        if self.ui.existingTableRadioButton.isChecked():
+          resultsSavePath = self.ui.csvPathSelector.currentPath
+        else:
+          resultsSavePath = self.ui.outputDirectorySelector.directory + "/elo_scores_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
+        self.logic.surveyDF.to_csv(resultsSavePath)
 
-      # Save scene
-      if self.surveyTable and slicer.util.saveNode(self.surveyTable, sceneSaveFilename):
-        if self.logic.surveyFinished:
-          slicer.util.infoDisplay("Results saved to: {0}. \n \n You can now close slicer to end the survey.".format(sceneSaveFilename))
-        else: 
-          slicer.util.infoDisplay("Results saved to: {0}".format(sceneSaveFilename))
+        # Save history as csv
+        if self.ui.saveHistoryCheckBox.isChecked():
+          historySaveFilename = self.ui.outputDirectorySelector.directory + "/comparison-history-" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
+          self.surveyTable = slicer.util.getFirstNodeByClassByName("vtkMRMLTableNode", self.logic.RESULTS_TABLE_NAME)
+          if self.surveyTable and slicer.util.saveNode(self.surveyTable, historySaveFilename):
+            slicer.util.infoDisplay("Comparison history saved to: {0}".format(historySaveFilename))
 
-      else:
-        slicer.util.errorDisplay("Results could not be saved.")
+        slicer.util.infoDisplay(f"Results successfully saved to: {resultsSavePath}")
+
+    except Exception as e:
+      slicer.util.errorDisplay(f"Results could not be saved: {str(e)}")
+
 
 #
 # SegmentationComparisonLogic
@@ -575,8 +560,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     Called when the logic class is instantiated. Can be used for initializing member variables.
     """
     ScriptedLoadableModuleLogic.__init__(self)
-    
-    self.clearVariables()
+
+    self.scansAndModelsDict = {}
+    self.surveyDF = None
+    self.surveyStarted = False
+    self.surveyFinished = False
+    self.nextPair = None
+    self.currentComparisonIndex = 0
+    self.surveyTable = None
     
   def setDefaultParameters(self, parameterNode):
     """
@@ -585,15 +576,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not parameterNode.GetParameter("Threshold"):
       parameterNode.SetParameter("Threshold", "0")
 
-  def clearVariables(self):
-    self.scansAndModelsDict = {}
-    self.currentComparisonIndex = 0
-    self.surveyStarted = False
-    self.surveyFinished = False
-    self.numberOfComparisons = 0
-    self.listRandomPairs = []
-
-  def setSurveyTable(self):
+  # TODO: keep this but use it as survey history?
+  def setSurveyHistory(self):
     # Reset survey table used to store survey results
     self.surveyTable = slicer.util.getFirstNodeByClassByName("vtkMRMLTableNode", self.RESULTS_TABLE_NAME)
     if self.surveyTable:
@@ -614,14 +598,31 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     col = self.surveyTable.AddColumn()
     col.SetName('Score_R')
 
-    for row in range(self.numberOfComparisons):
-      self.surveyTable.AddEmptyRow()
-      evaluatedPairData = self.listRandomPairs[row]
-      namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
-                               self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
-      self.surveyTable.SetCellText(row, 0, str(row + 1))
-      self.surveyTable.SetCellText(row, 1, namesVolumesToDisplay[0])
-      self.surveyTable.SetCellText(row, 3, namesVolumesToDisplay[1])
+    # for row in range(self.numberOfComparisons):
+    #   self.surveyTable.AddEmptyRow()
+    #   evaluatedPairData = self.listRandomPairs[row]
+    #   namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
+    #                            self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
+    #   self.surveyTable.SetCellText(row, 0, str(row + 1))
+    #   self.surveyTable.SetCellText(row, 1, namesVolumesToDisplay[0])
+    #   self.surveyTable.SetCellText(row, 3, namesVolumesToDisplay[1])
+
+  def setSurveyTable(self, csvPath):
+    # TODO: need to raise exception if columns are not correct or if models don't match loaded volumes
+    if csvPath:
+      self.surveyDF = pd.read_csv(csvPath)
+      if self.surveyDF.isempty():
+        raise Exception("CSV file is empty!")
+    else:
+      # Create new dataframe with each row being one model
+      data = {
+        "ModelName": self.scansAndModelsDict.keys(),
+        "Elo": 1000,
+        "GamesPlayed": 0,
+        "TimeLastPlayed": None
+      }
+      self.surveyDF = pd.DataFrame(data)
+      self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
 
   def resetScene(self):
     slicer.mrmlScene.Clear()
@@ -722,10 +723,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         patiendId, modelName, sequenceName = name.split('_')
         scanName = patiendId + "_" + sequenceName
 
-        if scanName in self.scansAndModelsDict:
-          self.scansAndModelsDict[scanName].append(modelName)
+        if modelName in self.scansAndModelsDict:
+          self.scansAndModelsDict[modelName].append({"ScanName": scanName, "GamesPlayed": 0})
         else:
-          self.scansAndModelsDict[scanName] = [modelName]
+          self.scansAndModelsDict[modelName] = [{"ScanName": scanName, "GamesPlayed": 0}]
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming convention: "
                                "[patient_id]_[AI_model_name]_[sequence_name].nrrd: "+str(e))
@@ -733,6 +734,23 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       traceback.print_exc()
     return
 
+  def getNextPair(self):
+    # randomly choose first matchup
+    if self.currentComparisonIndex == 0:
+      models = self.surveyDF["ModelName"].tolist()
+      nextModelPair = random.sample(models, 2)
+    else:
+      pass # TODO
+
+    # choose scan with lowest number of games
+    minDictList = []
+    for model in nextModelPair:
+      minDictList.append(min(self.scansAndModelsDict[model], key=lambda x: x["GamesPlayed"]))
+    minScan = min(minDictList, key=lambda x: x["GamesPlayed"])["ScanName"]
+    nextModelPair.insert(0, minScan)
+    self.nextPair = nextModelPair
+
+  # TODO: remove
   def createListOfRandomPairs(self):
     # Randomly make a list of pairs of images to be compared.
     # The pairs must be volumes reconstructed with different AI models, but with the same patient_sequence
@@ -869,9 +887,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       slicer.app.setRenderPaused(True)
 
       customID = self.VIEW_FIRST_DIGITS + self.currentComparisonIndex
-      evaluatedPairData = self.listRandomPairs[self.currentComparisonIndex]
-      namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
-                               self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
+      namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
+                               self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
       existingViewNode = False
 
       # If the view node already exists, center the camera before switching views
@@ -910,6 +927,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       slicer.app.setRenderPaused(False)
 
+  def addRecordInTable(self):
+    # Add new record to table
+    self.surveyTable.AddEmptyRow()
+    rowIdx = self.surveyTable.GetNumberOfRows() - 1
+    namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
+                             self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
+    self.surveyTable.SetCellText(rowIdx, 0, str(rowIdx + 1))
+    self.surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
+    self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
+
   def recordRatingInTable(self, buttonId):
     if not self.surveyStarted:
       self.surveyStarted = True
@@ -917,14 +944,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # Split the name
     side = buttonId.split("_")[0]
     rating = int(buttonId.split("_")[1])
-    currentlyDisplayedVolumes = self.listRandomPairs[self.currentComparisonIndex]
+    rowIdx = self.surveyTable.GetNumberOfRows() - 1
 
     if side == "L":
-      selectedVolume = currentlyDisplayedVolumes[1]
-      self.surveyTable.SetCellText(self.currentComparisonIndex, self.LEFT, str(rating))
+      self.surveyTable.SetCellText(rowIdx, self.LEFT, str(rating))
     elif side == "R":
-      selectedVolume = currentlyDisplayedVolumes[2]
-      self.surveyTable.SetCellText(self.currentComparisonIndex, self.RIGHT, str(rating))
+      self.surveyTable.SetCellText(rowIdx, self.RIGHT, str(rating))
     else:
       slicer.util.errorDisplay("ERROR: Invalid button Id")
 
