@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import math
 import time
+import datetime
 import random
 
 
@@ -178,6 +179,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if lastOutputPath != "":
       self.ui.outputDirectorySelector.directory = lastOutputPath
 
+    lastInputCSVPath = slicer.util.settingsValue(self.LAST_INPUT_CSV_PATH_SETTING, "")
+    if lastInputCSVPath != "":
+      self.ui.csvPathSelector.currentPath = lastInputCSVPath
+
     # Inputs
     self.ui.newTableRadioButton.toggled.connect(self.ui.csvPathSelector.setDisabled)
     self.ui.csvPathSelector.connect("currentPathChanged(const QString)", self.onCSVPathSelected)
@@ -208,7 +213,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     for button in buttonGroup.buttons():
       buttonName = startOfName + str(index)
       button.setAccessibleName(buttonName)
-
       index += 1
 
 
@@ -383,7 +387,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
       self.logic.setSurveyHistory()
 
-      csvPath = self.ui.csvDirectorySelector.directory if self.ui.existingTableRadioButton.isChecked() else None
+      csvPath = self.ui.csvPathSelector.currentPath if self.ui.existingTableRadioButton.isChecked() else None
       try:
         self.logic.setSurveyTable(csvPath)
       except Exception as e:
@@ -434,9 +438,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic.currentComparisonIndex += factor
 
     # self.ui.imageThresholdSliderWidget.reset()
+    if self.logic.currentComparisonIndex != 0:
+      self.logic.updateComparisonData()
+
     self.logic.getNextPair()
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
     self.logic.addRecordInTable()
+
     self.repopulateSurveyButtons()
     self.enablePreviousAndNextButtons()
 
@@ -473,7 +481,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
       self.uncheckSurveyButtons()
 
-  # TODO: remove?
   def repopulateSurveyButtons(self):
     # This function uses the table of survey results to display prior answers
     
@@ -503,15 +510,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.leftGroup.setExclusive(True)
 
   def onSaveButton(self):
-    if self.logic.surveyFinished:
-      confirmation = True
-      # This line should prevent the warning to save your changes on exiting slicer
-      # but i think i have messed something up, as it doesnt work properly
-      filter = CloseApplicationEventFilter()
-      slicer.util.mainWindow().installEventFilter(filter)
-    else:
-      confirmation = slicer.util.confirmYesNoDisplay("You have not yet completed the survey. Proceed?")
-
+    confirmation = slicer.util.confirmYesNoDisplay("Exit survey and save results?")
     try:
       if confirmation:
         # Save pandas dataframe to csv
@@ -554,6 +553,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   LEFT = 2
   RIGHT = 4
   RESULTS_TABLE_NAME = "SurveyResultsTable"
+  K = 32
 
   def __init__(self):
     """
@@ -576,7 +576,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not parameterNode.GetParameter("Threshold"):
       parameterNode.SetParameter("Threshold", "0")
 
-  # TODO: keep this but use it as survey history?
   def setSurveyHistory(self):
     # Reset survey table used to store survey results
     self.surveyTable = slicer.util.getFirstNodeByClassByName("vtkMRMLTableNode", self.RESULTS_TABLE_NAME)
@@ -598,20 +597,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     col = self.surveyTable.AddColumn()
     col.SetName('Score_R')
 
-    # for row in range(self.numberOfComparisons):
-    #   self.surveyTable.AddEmptyRow()
-    #   evaluatedPairData = self.listRandomPairs[row]
-    #   namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[1]),
-    #                            self.nameFromPatientSequenceAndModel(evaluatedPairData[0], evaluatedPairData[2])]
-    #   self.surveyTable.SetCellText(row, 0, str(row + 1))
-    #   self.surveyTable.SetCellText(row, 1, namesVolumesToDisplay[0])
-    #   self.surveyTable.SetCellText(row, 3, namesVolumesToDisplay[1])
-
   def setSurveyTable(self, csvPath):
     # TODO: need to raise exception if columns are not correct or if models don't match loaded volumes
     if csvPath:
       self.surveyDF = pd.read_csv(csvPath)
-      if self.surveyDF.isempty():
+      if self.surveyDF.empty:
         raise Exception("CSV file is empty!")
     else:
       # Create new dataframe with each row being one model
@@ -724,9 +714,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         scanName = patiendId + "_" + sequenceName
 
         if modelName in self.scansAndModelsDict:
-          self.scansAndModelsDict[modelName].append({"ScanName": scanName, "GamesPlayed": 0})
+          self.scansAndModelsDict[modelName][scanName] = 0
         else:
-          self.scansAndModelsDict[modelName] = [{"ScanName": scanName, "GamesPlayed": 0}]
+          self.scansAndModelsDict[modelName] = {scanName: 0}
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming convention: "
                                "[patient_id]_[AI_model_name]_[sequence_name].nrrd: "+str(e))
@@ -734,19 +724,86 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       traceback.print_exc()
     return
 
+  def calculateExpectedScores(self, leftElo, rightElo):
+    leftExpected = 1 / (1 + 10 ** ((rightElo - leftElo) / 400))
+    rightExpected = 1 / (1 + 10 ** ((leftElo - rightElo) / 400))
+    return leftExpected, rightExpected
+
+  def calculateScaledScore(self, diff, rmin=-4, rmax=4, tmin=0, tmax=1):
+    """Linearly scales the difference in rating to lie in between 0 and 1.
+
+        scaled rating difference = (diff - rmin) / (rmax - rmin) * (tmax - tmin) + tmin,
+        where diff = measured difference in rating,
+              rmin = minimum of original range (-4),
+              rmax = maximum of original range (4),
+              tmin = minimum of target range (0),
+              tmax = maximum of target range (1)
+    """
+    return (diff - rmin) / (rmax - rmin) * (tmax - tmin) + tmin
+
+  def calculateActualScores(self):
+    currentRow = self.surveyTable.GetNumberOfRows() - 1
+    leftRating = int(self.surveyTable.GetCellText(currentRow, self.LEFT))
+    rightRating = int(self.surveyTable.GetCellText(currentRow, self.RIGHT))
+    leftActual = self.calculateScaledScore(leftRating - rightRating)
+    rightActual = self.calculateScaledScore(rightRating - leftRating)
+    return leftActual, rightActual
+
+  def calculateNewElo(self, current, actual, expected):
+    return current + self.K * (actual - expected)
+
+  def updateComparisonData(self):
+    # Update elo scores
+    leftModel = self.nextPair[1]
+    rightModel = self.nextPair[2]
+    leftElo = self.surveyDF.query(f"ModelName == '{leftModel}'").iloc[0]["Elo"]
+    rightElo = self.surveyDF.query(f"ModelName == '{rightModel}'").iloc[0]["Elo"]
+    leftExpected, rightExpected = self.calculateExpectedScores(leftElo, rightElo)
+    leftActual, rightActual = self.calculateActualScores()
+    leftNewElo = self.calculateNewElo(leftElo, leftActual, leftExpected)
+    rightNewElo = self.calculateNewElo(rightElo, rightActual, rightExpected)
+    leftModelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == leftModel][0]
+    rightModelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == rightModel][0]
+    self.surveyDF.at[leftModelIdx, "Elo"] = leftNewElo
+    self.surveyDF.at[rightModelIdx, "Elo"] = rightNewElo
+
+    # Increment games played for each model/scan and update last time played
+    scan = self.nextPair[0]
+    for i in range(1, len(self.nextPair)):
+      model = self.nextPair[i]
+      modelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == model][0]
+      self.surveyDF.at[modelIdx, "GamesPlayed"] += 1
+      self.surveyDF.at[modelIdx, "TimeLastPlayed"] = datetime.datetime.now()
+      self.scansAndModelsDict[model][scan] += 1
+    print(self.surveyDF)
+    print(self.scansAndModelsDict)
+
   def getNextPair(self):
-    # randomly choose first matchup
+    # Randomly choose first matchup
     if self.currentComparisonIndex == 0:
       models = self.surveyDF["ModelName"].tolist()
       nextModelPair = random.sample(models, 2)
-    else:
-      pass # TODO
 
-    # choose scan with lowest number of games
+    else:
+      nextModelPair = []
+      # Get list of models with minimum games played
+      minGamesIndexes = self.surveyDF.index[self.surveyDF["GamesPlayed"] == self.surveyDF["GamesPlayed"].min()].tolist()
+      if len(minGamesIndexes) == 1:
+        # No ties, match with model with closest elo
+        leastGamesModel = self.surveyDF.iloc[minGamesIndexes[0]]["ModelName"]
+        nextModelPair.append(leastGamesModel)
+        leastGamesElo = self.surveyDF.query(f"ModelName == '{leastGamesModel}'").iloc[0]["Elo"]
+        closestEloModel = self.surveyDF.iloc[(self.surveyDF["Elo"] - leastGamesElo).abs().argsort()[1]]["ModelName"]
+        nextModelPair.append(closestEloModel)
+      else:
+        # Pick first model with least recent date played
+        pass
+
+    # Choose scan with least number of games
     minDictList = []
     for model in nextModelPair:
-      minDictList.append(min(self.scansAndModelsDict[model], key=lambda x: x["GamesPlayed"]))
-    minScan = min(minDictList, key=lambda x: x["GamesPlayed"])["ScanName"]
+      minDictList.append(min(self.scansAndModelsDict[model].items(), key=lambda x: x[1]))
+    minScan = min(minDictList, key=lambda x: x[1])[0]
     nextModelPair.insert(0, minScan)
     self.nextPair = nextModelPair
 

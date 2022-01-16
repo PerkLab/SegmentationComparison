@@ -10,6 +10,12 @@
     <height>873</height>
    </rect>
   </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
@@ -99,7 +105,17 @@
        </layout>
       </item>
       <item row="1" column="1">
-       <widget class="ctkPathLineEdit" name="csvPathSelector"/>
+       <widget class="ctkPathLineEdit" name="csvPathSelector">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="sizeAdjustPolicy">
+         <enum>ctkPathLineEdit::AdjustToMinimumContentsLength</enum>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -483,8 +499,8 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="leftGroup"/>
-  <buttongroup name="rightGroup"/>
   <buttongroup name="startSettingGroup"/>
+  <buttongroup name="rightGroup"/>
+  <buttongroup name="leftGroup"/>
  </buttongroups>
 </ui>
