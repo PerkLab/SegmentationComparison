@@ -143,7 +143,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Load widget from .ui file (created by Qt Designer).
     # Additional widgets can be instantiated manually and added to self.layout.
     uiWidget = slicer.util.loadUI(
-        self.resourcePath('UI/SegmentationComparison.ui'))
+      self.resourcePath('UI/SegmentationComparison.ui'))
     self.layout.addWidget(uiWidget)
     self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -169,7 +169,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # TODO: fix threshold
     self.ui.imageThresholdSliderWidget.connect(
-        "valueChanged(double)", self.autoUpdateThresholdSlider)
+      "valueChanged(double)", self.autoUpdateThresholdSlider)
 
     lastInputPath = slicer.util.settingsValue(self.LAST_INPUT_PATH_SETTING, "")
     if lastInputPath != "":
@@ -207,14 +207,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # e.g. L_3 corresponds to the left side recieving 3 stars
     self.setNameOfButtons(self.ui.leftGroup, "L_")
     self.setNameOfButtons(self.ui.rightGroup, "R_")
-    
+
   def setNameOfButtons(self, buttonGroup, startOfName):
     index = 1
     for button in buttonGroup.buttons():
       buttonName = startOfName + str(index)
       button.setAccessibleName(buttonName)
       index += 1
-
 
   # set the output directory to the input directory as a default
   def onInputVolumeDirectorySelected(self, selectedPath):
@@ -265,7 +264,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     # Do not react to parameter node changes (GUI wlil be updated when the user enters into the module)
     self.removeObserver(
-        self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+      self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
     slicer.util.setDataProbeVisible(True)
 
   def onSceneStartClose(self, caller, event):
@@ -306,7 +305,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # those are reflected immediately in the GUI.
     if self._parameterNode is not None:
       self.removeObserver(
-          self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+        self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
     self._parameterNode = inputParameterNode
     if self._parameterNode is not None:
       self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent,
@@ -329,7 +328,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Update node selectors and sliders
     self.ui.imageThresholdSliderWidget.value = float(
-        self._parameterNode.GetParameter("Threshold"))
+      self._parameterNode.GetParameter("Threshold"))
 
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
@@ -345,9 +344,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Modify all properties in a single batch
     wasModified = self._parameterNode.StartModify()
-    
+
     self._parameterNode.SetParameter("Threshold", str(
-        self.ui.imageThresholdSliderWidget.value))
+      self.ui.imageThresholdSliderWidget.value))
 
     self._parameterNode.EndModify(wasModified)
 
@@ -383,10 +382,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       if self.logic.surveyStarted:
         self.logic.surveyStarted = False
 
-      # TODO: add loading progress dialog box and prevent GUI changes
       self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
+      # TODO: give option to load history as well
       self.logic.setSurveyHistory()
-
       csvPath = self.ui.csvPathSelector.currentPath if self.ui.existingTableRadioButton.isChecked() else None
       try:
         self.logic.setSurveyTable(csvPath)
@@ -396,7 +394,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       # self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
 
       self.changeScene(0)
-
       self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
 
   def loadSurveyMessage(self, directory):
@@ -438,31 +435,35 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic.currentComparisonIndex += factor
 
     # self.ui.imageThresholdSliderWidget.reset()
-    if self.logic.currentComparisonIndex != 0:
+    if self.logic.currentComparisonIndex != 0 and factor == 1:
       self.logic.updateComparisonData()
 
-    self.logic.getNextPair()
+    if factor == -1:
+      self.logic.nextPair = self.logic.previousPair
+      self.logic.surveyDF = self.logic.previousDF
+    else:
+      self.logic.getNextPair(self.ui.newTableRadioButton.isChecked())
+      self.logic.addRecordInTable()
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
-    self.logic.addRecordInTable()
 
     self.repopulateSurveyButtons()
     self.enablePreviousAndNextButtons()
+
 
   def enablePreviousAndNextButtons(self):
     # This function exists to ensure that, when these two buttons are enabled,
     # they aren't allowing the user to click previous on the first volume.
     # or next on the last volume. Also, the two compared models have to be rated
     # before moving forward or back.
-
-    if self.ui.leftGroup.checkedButton() and self.ui.rightGroup.checkedButton():
-      self.ui.previousButton.setEnabled(True)
-      self.ui.nextButton.setEnabled(True)
-    else:
-      self.ui.previousButton.setEnabled(False)
-      self.ui.nextButton.setEnabled(False)
-
     if self.logic.currentComparisonIndex == 0:
       self.ui.previousButton.setEnabled(False)
+    else:
+      self.ui.previousButton.setEnabled(True)
+
+    if self.ui.leftGroup.checkedButton() and self.ui.rightGroup.checkedButton():
+      self.ui.nextButton.setEnabled(True)
+    else:
+      self.ui.nextButton.setEnabled(False)
 
   def onLeftGroup(self):
     rating = self.ui.leftGroup.checkedButton().accessibleName
@@ -483,7 +484,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def repopulateSurveyButtons(self):
     # This function uses the table of survey results to display prior answers
-    
+
     leftModelRating = self.logic.surveyTable.GetCellText(self.logic.currentComparisonIndex, self.logic.LEFT)
     rightModelRating = self.logic.surveyTable.GetCellText(self.logic.currentComparisonIndex, self.logic.RIGHT)
 
@@ -518,7 +519,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
           resultsSavePath = self.ui.csvPathSelector.currentPath
         else:
           resultsSavePath = self.ui.outputDirectorySelector.directory + "/elo_scores_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
-        self.logic.surveyDF.to_csv(resultsSavePath)
+        self.logic.surveyDF.to_csv(resultsSavePath, index=False)
 
         # Save history as csv
         if self.ui.saveHistoryCheckBox.isChecked():
@@ -554,6 +555,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   RIGHT = 4
   RESULTS_TABLE_NAME = "SurveyResultsTable"
   K = 32
+  DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
 
   def __init__(self):
     """
@@ -566,8 +568,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyStarted = False
     self.surveyFinished = False
     self.nextPair = None
+    self.previousPair = None
     self.currentComparisonIndex = 0
     self.surveyTable = None
+    self.previousDF = None
     
   def setDefaultParameters(self, parameterNode):
     """
@@ -598,11 +602,38 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     col.SetName('Score_R')
 
   def setSurveyTable(self, csvPath):
-    # TODO: need to raise exception if columns are not correct or if models don't match loaded volumes
     if csvPath:
       self.surveyDF = pd.read_csv(csvPath)
+      self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
+
+      # Catch errors in csv format or content
       if self.surveyDF.empty:
         raise Exception("CSV file is empty!")
+
+      # Make sure required columns are in csv
+      missingCols = []
+      for col in self.DF_COLUMN_NAMES:
+        if col not in self.surveyDF.columns.values:
+          missingCols.append(col)
+      if missingCols:
+        raise Exception(f"CSV file is missing columns: {missingCols}.")
+
+      # Make sure model names match
+      modelNames = self.scansAndModelsDict.keys()
+      csvModelNames = self.surveyDF["ModelName"].unique()
+      if not (set(modelNames) == set(csvModelNames)):
+        raise Exception("Model names in CSV do not match loaded volumes.")
+
+      # Check for missing values in elo and games played columns
+      nanCols = self.surveyDF.columns[self.surveyDF.isnull().any()].tolist()
+      nanColNames = []
+      for i in range(1, len(self.DF_COLUMN_NAMES) - 1):  # there is probably a better solution
+        column = self.DF_COLUMN_NAMES[i]
+        if column in nanCols:
+          nanColNames.append(column)
+      if nanColNames:
+        raise Exception(f"CSV file contains missing values in columns: {nanColNames}.")
+
     else:
       # Create new dataframe with each row being one model
       data = {
@@ -742,9 +773,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return (diff - rmin) / (rmax - rmin) * (tmax - tmin) + tmin
 
   def calculateActualScores(self):
-    currentRow = self.surveyTable.GetNumberOfRows() - 1
-    leftRating = int(self.surveyTable.GetCellText(currentRow, self.LEFT))
-    rightRating = int(self.surveyTable.GetCellText(currentRow, self.RIGHT))
+    # currentRow = self.surveyTable.GetNumberOfRows() - 1
+    leftRating = int(self.surveyTable.GetCellText(self.currentComparisonIndex - 1, self.LEFT))
+    rightRating = int(self.surveyTable.GetCellText(self.currentComparisonIndex - 1, self.RIGHT))
     leftActual = self.calculateScaledScore(leftRating - rightRating)
     rightActual = self.calculateScaledScore(rightRating - leftRating)
     return leftActual, rightActual
@@ -753,6 +784,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return current + self.K * (actual - expected)
 
   def updateComparisonData(self):
+    # Store previous dataframe state
+    self.previousDF = self.surveyDF.copy()
+
     # Update elo scores
     leftModel = self.nextPair[1]
     rightModel = self.nextPair[2]
@@ -778,9 +812,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     print(self.surveyDF)
     print(self.scansAndModelsDict)
 
-  def getNextPair(self):
+  def getNextPair(self, isNewCsv):
     # Randomly choose first matchup
-    if self.currentComparisonIndex == 0:
+    if self.currentComparisonIndex == 0 and isNewCsv:
       models = self.surveyDF["ModelName"].tolist()
       nextModelPair = random.sample(models, 2)
 
@@ -788,23 +822,33 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       nextModelPair = []
       # Get list of models with minimum games played
       minGamesIndexes = self.surveyDF.index[self.surveyDF["GamesPlayed"] == self.surveyDF["GamesPlayed"].min()].tolist()
+
       if len(minGamesIndexes) == 1:
         # No ties, match with model with closest elo
-        leastGamesModel = self.surveyDF.iloc[minGamesIndexes[0]]["ModelName"]
-        nextModelPair.append(leastGamesModel)
-        leastGamesElo = self.surveyDF.query(f"ModelName == '{leastGamesModel}'").iloc[0]["Elo"]
-        closestEloModel = self.surveyDF.iloc[(self.surveyDF["Elo"] - leastGamesElo).abs().argsort()[1]]["ModelName"]
-        nextModelPair.append(closestEloModel)
+        leastModel = self.surveyDF.iloc[minGamesIndexes[0]]["ModelName"]
+        nextModelPair.append(leastModel)
       else:
         # Pick first model with least recent date played
-        pass
+        minGamesDF = self.surveyDF.iloc[minGamesIndexes]
+        leastModel = self.surveyDF.query(f"TimeLastPlayed == '{minGamesDF['TimeLastPlayed'].min()}'").iloc[0]["ModelName"]
+        nextModelPair.append(leastModel)
+
+      # Pick model with closest elo score
+      leastModelElo = self.surveyDF.query(f"ModelName == '{leastModel}'").iloc[0]["Elo"]
+      closestEloModel = self.surveyDF.iloc[(self.surveyDF["Elo"] - leastModelElo).abs().argsort()[1]]["ModelName"]
+      nextModelPair.append(closestEloModel)
 
     # Choose scan with least number of games
     minDictList = []
     for model in nextModelPair:
-      minDictList.append(min(self.scansAndModelsDict[model].items(), key=lambda x: x[1]))
+      modelScans = self.scansAndModelsDict[model].items()
+      # workaround to issue of scan getting picked when not the least played
+      minDictList.append(min(random.sample(modelScans, len(modelScans)), key=lambda x: x[1]))
     minScan = min(minDictList, key=lambda x: x[1])[0]
     nextModelPair.insert(0, minScan)
+    # Remember previous pair
+    if self.currentComparisonIndex != 0:
+      self.previousPair = self.nextPair
     self.nextPair = nextModelPair
 
   # TODO: remove
@@ -1001,7 +1045,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # Split the name
     side = buttonId.split("_")[0]
     rating = int(buttonId.split("_")[1])
-    rowIdx = self.surveyTable.GetNumberOfRows() - 1
+    rowIdx = self.currentComparisonIndex
 
     if side == "L":
       self.surveyTable.SetCellText(rowIdx, self.LEFT, str(rating))
