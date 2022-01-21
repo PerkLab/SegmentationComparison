@@ -167,8 +167,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # (in the selected parameter node).
 
     # TODO: fix threshold
+    self.ui.imageThresholdSliderWidget.connect("valueChanged(int)", self.onThresholdSliderValueChanged)
     self.ui.imageThresholdSliderWidget.connect(
-      "valueChanged(double)", self.autoUpdateThresholdSlider)
+      "sliderPressed()",
+      lambda: logging.info("Threshold slider pressed.")
+    )
+    thresholdPercentage = self.getThresholdPercentage(self.ui.imageThresholdSliderWidget.value)
+    self.ui.thresholdPercentageLabel.text = str(int(thresholdPercentage)) + "%"
 
     lastInputPath = slicer.util.settingsValue(self.LAST_INPUT_PATH_SETTING, "")
     if lastInputPath != "":
@@ -182,15 +187,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.csvPathSelector.connect("currentPathChanged(const QString)", self.onCSVPathChanged)
     self.ui.clearCSVPathButton.connect("clicked()", self.onClearButtonPressed)
     self.ui.inputDirectorySelector.connect("directoryChanged(const QString)", self.onInputVolumeDirectorySelected)
-    self.ui.loadButton.connect('clicked(bool)', self.onLoadButton)
+    self.ui.loadButton.connect('clicked()', self.onLoadButton)
 
     # Comparison
-    self.ui.resetCameraButton.connect('clicked(bool)', self.onResetCameraButton)
+    self.ui.resetCameraButton.connect('clicked()', self.onResetCameraButton)
     self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
     self.ui.rightGroup.buttonClicked.connect(self.onRightGroup)
-    self.ui.nextButton.connect('clicked(bool)', self.onNextButton)
-    self.ui.previousButton.connect('clicked(bool)', self.onPreviousButton)
-    self.ui.saveButton.connect('clicked(bool)', self.onSaveButton)
+    self.ui.nextButton.connect('clicked()', self.onNextButton)
+    self.ui.previousButton.connect('clicked()', self.onPreviousButton)
+    self.ui.saveButton.connect('clicked()', self.onSaveButton)
 
     # Settings
     self.ui.outputDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
@@ -212,6 +217,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   # set the output directory to the input directory as a default
   def onInputVolumeDirectorySelected(self, selectedPath):
+    logging.info(f"onInputVolumeDirectorySelected({selectedPath})")
     settings = qt.QSettings()
     settings.setValue(self.LAST_INPUT_PATH_SETTING, selectedPath)
 
@@ -223,6 +229,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onCSVPathChanged(self, selectedPath):
     if selectedPath:
+      logging.info(f"onCSVPathChanged({selectedPath}")
       settings = qt.QSettings()
       lastOutputPath = os.path.abspath(os.path.join(selectedPath, os.pardir))
       self.ui.outputDirectorySelector.directory = lastOutputPath
@@ -231,11 +238,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.updateParameterNodeFromGUI()
 
   def onClearButtonPressed(self):
+    logging.info("onClearButtonPressed()")
     if self.ui.csvPathSelector.currentPath is None:
       return
     self.ui.csvPathSelector.currentPath = ""
 
   def onOutputDirectorySelected(self, selectedPath):
+    logging.info(f"onOutputDirectorySelected({selectedPath})")
     settings = qt.QSettings()
     settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
     self.updateParameterNodeFromGUI()
@@ -348,7 +357,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode.EndModify(wasModified)
 
   # Threshold the selected volume(s)
-  def autoUpdateThresholdSlider(self):
+  def onThresholdSliderValueChanged(self, value):
+    thresholdPercentage = self.getThresholdPercentage(value)
+    self.ui.thresholdPercentageLabel.text = str(round(thresholdPercentage)) + "%"
     try:
       # Prevent thresholding when volumes have not yet been loaded
       if self.logic.nextPair:
@@ -359,13 +370,24 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
           inputVolume = self._parameterNode.GetNodeReference(volumeName)
           # prevents invalid volume error when loading the widget
           if inputVolume is not None:
-            self.logic.threshold(inputVolume, self.ui.imageThresholdSliderWidget.value)
+            self.logic.threshold(inputVolume, value)
     except Exception as e:
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
 
+  def getThresholdPercentage(self, value):
+    thresholdPercentage = self.logic.calculateScaledScore(
+      value,
+      rmin=0,
+      rmax=255 + self.logic.WINDOW,
+      tmin=100,
+      tmax=0
+    )
+    return thresholdPercentage
+
   def onLoadButton(self):
+    logging.info("onLoadButton()")
     if self.logic.surveyStarted:
       confirmation = slicer.util.confirmYesNoDisplay("WARNING: This will delete all survey progress. Proceed?")
     else:
@@ -405,6 +427,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       except Exception as e:
         qt.QApplication.restoreOverrideCursor()
 
+        logging.error(str(e))
         slicer.util.errorDisplay(f"Failed to load: {str(e)}")
         import traceback
         traceback.print_exc()
@@ -437,14 +460,17 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.ui.surveyMessage.setText(self.defaultSurveyMessage)
 
   def onResetCameraButton(self):
+    logging.info("onResetCameraButton()")
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
   def onPreviousButton(self):
+    logging.info("onPreviousButton()")
     # prevent wraparound
     if self.logic.sessionComparisonCount != 0:
       self.changeScene(-1)
 
   def onNextButton(self):
+    logging.info("onNextButton()")
     self.changeScene(1)
 
   def changeScene(self, factor):
@@ -462,6 +488,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if factor == -1:
       self.logic.nextPair = self.logic.previousPair
       self.logic.surveyDF = self.logic.previousDF
+      self.logic.removeLastRecordInTable()
     else:
       self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
       self.logic.addRecordInTable()
@@ -489,10 +516,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def onLeftGroup(self):
     rating = self.ui.leftGroup.checkedButton().accessibleName
     self.onRating(rating)
+    ratingString = rating.split("_")[-1]
+    logging.info(f"Rating of {ratingString} selected for left volume.")
 
   def onRightGroup(self):
     rating = self.ui.rightGroup.checkedButton().accessibleName
     self.onRating(rating)
+    ratingString = rating.split("_")[-1]
+    logging.info(f"Rating of {ratingString} selected for right volume.")
 
   def onRating(self, rating):
     # Prevents rating before any volumes have been loaded
@@ -532,6 +563,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.leftGroup.setExclusive(True)
 
   def onSaveButton(self):
+    logging.info("onSaveButton()")
     confirmation = slicer.util.confirmYesNoDisplay("Exit survey and save results?")
     try:
       if confirmation:
@@ -576,6 +608,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   DEFAULT_ELO = 1000
   K = 32
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
+  WINDOW = 50
 
   def __init__(self):
     """
@@ -641,7 +674,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   def setSurveyTable(self, csvPath):
     if csvPath:
       self.surveyDF = pd.read_csv(csvPath)
-      self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
 
       # Catch errors in csv format or content
       if self.surveyDF.empty:
@@ -670,6 +702,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
           nanColNames.append(column)
       if nanColNames:
         raise Exception(f"CSV file contains missing values in columns: {nanColNames}.")
+
+      self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
 
     else:
       # Create new dataframe with each row being one model
@@ -849,8 +883,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       self.surveyDF.at[modelIdx, "GamesPlayed"] += 1
       self.surveyDF.at[modelIdx, "TimeLastPlayed"] = datetime.datetime.now()
       self.scansAndModelsDict[model][scan] += 1
-    print(self.surveyDF)
-    print(self.scansAndModelsDict)
 
   def getNextPair(self, isNewCsv):
     # Randomly choose first matchup
@@ -1026,7 +1058,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
         viewNode.LinkedControlOn()
 
-        displayNode = self.setVolumeRenderingProperty(volume, 100, thresholdValue)
+        displayNode = self.setVolumeRenderingProperty(volume, self.WINDOW, thresholdValue)
         displayNode.SetViewNodeIDs([viewNode.GetID()])
 
         self.centerAndRotateCamera(volume, viewNode)
@@ -1057,6 +1089,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
     self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
 
+  def removeLastRecordInTable(self):
+    lastRow = self.surveyTable.GetNumberOfRows() - 1
+    self.surveyTable.RemoveRow(lastRow)
+
   def recordRatingInTable(self, buttonId):
     if not self.surveyStarted:
       self.surveyStarted = True
@@ -1076,7 +1112,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   def threshold(self, inputVolume, imageThreshold):
     if not inputVolume:
       raise ValueError("Input volume is invalid")
-    self.setVolumeRenderingProperty(inputVolume, 50, imageThreshold)
+    self.setVolumeRenderingProperty(inputVolume, self.WINDOW, imageThreshold - self.WINDOW / 2)
 
 #
 # SegmentationComparisonTest

@@ -47,7 +47,7 @@
            <enum>ctkPathLineEdit::AdjustToMinimumContentsLength</enum>
           </property>
           <property name="minimumContentsLength">
-           <number>15</number>
+           <number>10</number>
           </property>
          </widget>
         </item>
@@ -77,6 +77,12 @@
        <widget class="ctkDirectoryButton" name="inputDirectorySelector">
         <property name="enabled">
          <bool>true</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
         </property>
         <property name="caption">
          <string>Select a directory containing the segmentations to compare</string>
@@ -130,37 +136,38 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="ctkSliderWidget" name="imageThresholdSliderWidget">
-           <property name="toolTip">
-            <string>Set threshold value for computing the output image. Voxels that have intensities lower than this value will set to zero.</string>
-           </property>
-           <property name="singleStep">
-            <double>1.000000000000000</double>
-           </property>
-           <property name="minimum">
-            <double>0.000000000000000</double>
-           </property>
-           <property name="maximum">
-            <double>255.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>0.500000000000000</double>
-           </property>
-           <property name="tracking">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="1">
-          <layout class="QVBoxLayout" name="verticalLayout_2">
+          <layout class="QHBoxLayout" name="horizontalLayout_7">
            <item>
-            <widget class="QPushButton" name="resetCameraButton">
+            <widget class="QSlider" name="imageThresholdSliderWidget">
+             <property name="minimum">
+              <number>0</number>
+             </property>
+             <property name="maximum">
+              <number>305</number>
+             </property>
+             <property name="value">
+              <number>0</number>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="thresholdPercentageLabel">
              <property name="text">
-              <string>Reset camera</string>
+              <string>100%</string>
              </property>
             </widget>
            </item>
           </layout>
+         </item>
+         <item row="1" column="0" colspan="2">
+          <widget class="QPushButton" name="resetCameraButton">
+           <property name="text">
+            <string>Reset camera</string>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
@@ -515,11 +522,6 @@
    <header>ctkPathLineEdit.h</header>
   </customwidget>
   <customwidget>
-   <class>ctkSliderWidget</class>
-   <extends>QWidget</extends>
-   <header>ctkSliderWidget.h</header>
-  </customwidget>
-  <customwidget>
    <class>qMRMLWidget</class>
    <extends>QWidget</extends>
    <header>qMRMLWidget.h</header>
@@ -529,7 +531,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="rightGroup"/>
   <buttongroup name="leftGroup"/>
+  <buttongroup name="rightGroup"/>
  </buttongroups>
 </ui>
