@@ -965,8 +965,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
       displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
-    upper = min(255, level + window/2)
-    lower = max(0, level - window/2)
+    upper = min(265, level + window/2)
+    lower = max(2, level - window/2)
+
+    if upper <= lower:
+      upper = lower + 1
 
     p0 = lower
     p1 = lower + (upper - lower)*0.15
@@ -978,6 +981,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     opacityTransferFunction.AddPoint(p1, 0.2)
     opacityTransferFunction.AddPoint(p2, 0.6)
     opacityTransferFunction.AddPoint(p3, 1)
+
+    print(opacityTransferFunction)  #todo: remove after debuggin
 
     colorTransferFunction = vtk.vtkColorTransferFunction()
     colorTransferFunction.AddRGBPoint(p0, 0.20, 0.00, 0.00)
