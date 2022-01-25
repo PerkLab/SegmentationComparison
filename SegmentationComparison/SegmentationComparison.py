@@ -982,8 +982,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     opacityTransferFunction.AddPoint(p2, 0.6)
     opacityTransferFunction.AddPoint(p3, 1)
 
-    print(opacityTransferFunction)  #todo: remove after debuggin
-
     colorTransferFunction = vtk.vtkColorTransferFunction()
     colorTransferFunction.AddRGBPoint(p0, 0.20, 0.00, 0.00)
     colorTransferFunction.AddRGBPoint(p1, 0.65, 0.45, 0.15)
