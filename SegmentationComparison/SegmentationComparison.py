@@ -488,7 +488,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if factor == -1:
       self.logic.nextPair = self.logic.previousPair
       self.logic.surveyDF = self.logic.previousDF
-      self.logic.removeLastRecordInTable()
     else:
       self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
       self.logic.addRecordInTable()
@@ -955,8 +954,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     threeDView = threeDWidget.threeDView()
     threeDView.resetFocalPoint()
 
-
-
   # Manually define volume property for volume rendering
   def setVolumeRenderingProperty(self, volumeNode, window, level):
 
@@ -996,7 +993,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     volumeProperty.SetInterpolationTypeToLinear()
 
     return displayNode
-
 
   def makeCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode):
 
@@ -1080,6 +1076,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       slicer.app.setRenderPaused(False)
 
   def addRecordInTable(self):
+    # Prevent new row from being added after pressing next following a previous click
+    if self.totalComparisonCount < self.surveyTable.GetNumberOfRows():
+      return
     # Add new record to table
     self.surveyTable.AddEmptyRow()
     rowIdx = self.surveyTable.GetNumberOfRows() - 1
@@ -1088,10 +1087,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyTable.SetCellText(rowIdx, 0, str(rowIdx + 1))
     self.surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
     self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
-
-  def removeLastRecordInTable(self):
-    lastRow = self.surveyTable.GetNumberOfRows() - 1
-    self.surveyTable.RemoveRow(lastRow)
 
   def recordRatingInTable(self, buttonId):
     if not self.surveyStarted:
