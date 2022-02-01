@@ -496,7 +496,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.repopulateSurveyButtons()
     self.enablePreviousAndNextButtons()
 
-
   def enablePreviousAndNextButtons(self):
     # This function exists to ensure that, when these two buttons are enabled,
     # they aren't allowing the user to click previous on the first volume.

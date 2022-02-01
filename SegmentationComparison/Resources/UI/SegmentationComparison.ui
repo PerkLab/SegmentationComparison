@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>569</width>
-    <height>704</height>
+    <width>554</width>
+    <height>702</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -32,13 +32,16 @@
       </item>
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
         <item>
          <widget class="ctkPathLineEdit" name="csvPathSelector">
           <property name="enabled">
            <bool>true</bool>
           </property>
           <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
@@ -66,37 +69,21 @@
         </item>
        </layout>
       </item>
-      <item row="1" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="label_2">
         <property name="text">
          <string>Volume input directory:</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="ctkDirectoryButton" name="inputDirectorySelector">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="caption">
-         <string>Select a directory containing the segmentations to compare</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
+      <item row="9" column="0">
        <widget class="QLabel" name="label_4">
         <property name="text">
          <string>Load volumes from directory:</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="9" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
          <widget class="QPushButton" name="loadButton">
@@ -112,6 +99,25 @@
          </widget>
         </item>
        </layout>
+      </item>
+      <item row="4" column="1">
+       <widget class="ctkDirectoryButton" name="inputDirectorySelector">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="caption">
+         <string>Select a directory containing the segmentations to compare</string>
+        </property>
+		<property name="elideMode">
+		 <enum>Qt::ElideMiddle</enum>
+		</property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -156,10 +162,16 @@
            <item>
             <widget class="QLabel" name="thresholdPercentageLabel">
              <property name="sizePolicy">
-              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
                <horstretch>0</horstretch>
                <verstretch>0</verstretch>
               </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>0</height>
+              </size>
              </property>
              <property name="text">
               <string>100%</string>
@@ -168,7 +180,7 @@
            </item>
           </layout>
          </item>
-         <item row="1" column="0" colspan="2">
+         <item row="2" column="0" colspan="2">
           <widget class="QPushButton" name="resetCameraButton">
            <property name="text">
             <string>Reset camera</string>
@@ -178,7 +190,7 @@
         </layout>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="2" column="0" colspan="2">
        <widget class="QGroupBox" name="survey">
         <property name="title">
          <string/>
@@ -342,7 +354,7 @@
         </layout>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
+      <item row="4" column="0" colspan="2">
        <widget class="QGroupBox" name="save">
         <property name="title">
          <string/>
@@ -365,7 +377,7 @@
         </layout>
        </widget>
       </item>
-      <item row="2" column="0" colspan="2">
+      <item row="3" column="0" colspan="2">
        <widget class="QGroupBox" name="surveyNavigation">
         <property name="title">
          <string/>
@@ -408,7 +420,7 @@
            </item>
           </layout>
          </item>
-         <item row="1" column="0" colspan="2">
+         <item row="3" column="0" colspan="2">
           <layout class="QHBoxLayout" name="horizontalLayout_5">
            <item>
             <widget class="QGroupBox" name="groupBox_4">
@@ -476,7 +488,7 @@
       <string>SETTINGS</string>
      </property>
      <property name="checked">
-      <bool>false</bool>
+      <bool>true</bool>
      </property>
      <property name="collapsed">
       <bool>true</bool>
@@ -490,7 +502,17 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="ctkDirectoryButton" name="outputDirectorySelector"/>
+       <widget class="ctkDirectoryButton" name="outputDirectorySelector">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+		<property name="elideMode">
+		 <enum>Qt::ElideMiddle</enum>
+		</property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -537,7 +559,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="leftGroup"/>
   <buttongroup name="rightGroup"/>
+  <buttongroup name="leftGroup"/>
  </buttongroups>
 </ui>
