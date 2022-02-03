@@ -13,7 +13,7 @@ import numpy as np
 try:
   import pandas as pd
 except:
-  pip_install('pandas')
+  slicer.util.pip_install('pandas')
   import pandas as pd
 
 import math
