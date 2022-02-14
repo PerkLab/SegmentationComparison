@@ -488,16 +488,21 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
     self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
 
-    # self.ui.imageThresholdSliderWidget.reset()
     if self.logic.sessionComparisonCount != 0 and factor == 1:
       self.logic.updateComparisonData()
 
     if factor == -1:
-      self.logic.nextPair = self.logic.previousPair
-      self.logic.surveyDF = self.logic.previousDF
+      leftScanName = self.logic.surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT - 1)
+      rightScanName = self.logic.surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT - 1)
+      leftModelName = leftScanName.split("_")[1]
+      rightModelName = rightScanName.split("_")[1]
+      scanName = leftScanName.split("_")[0] + "_" + leftScanName.split("_")[2]
+      self.logic.nextPair = [scanName, leftModelName, rightModelName]
+      self.logic.surveyDF = self.logic.previousDF.pop(-1)
     else:
       self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
       self.logic.addRecordInTable()
+    self.ui.imageThresholdSliderWidget.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
     self.repopulateSurveyButtons()
@@ -630,7 +635,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.sessionComparisonCount = 0
     self.totalComparisonCount = 0
     self.surveyTable = None
-    self.previousDF = None
+    self.previousDF = []
     
   def setDefaultParameters(self, parameterNode):
     """
@@ -864,7 +869,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   def updateComparisonData(self):
     # Store previous dataframe state
-    self.previousDF = self.surveyDF.copy()
+    self.previousDF.append(self.surveyDF.copy())
 
     # Update elo scores
     leftModel = self.nextPair[1]
