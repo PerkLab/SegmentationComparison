@@ -9,7 +9,13 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import numpy as np
-import pandas as pd
+
+try:
+  import pandas as pd
+except:
+  slicer.util.pip_install('pandas')
+  import pandas as pd
+
 import math
 import time
 import datetime
