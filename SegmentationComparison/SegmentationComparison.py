@@ -120,6 +120,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   LAST_INPUT_PATH_SETTING = "SegmentationComparison/LastInputPath"
   LAST_OUTPUT_PATH_SETTING = "SegmentationComparison/LastOutputPath"
+  THRESHOLD_SLIDER_MIDDLE_VALUE = 152
 
   def __init__(self, parent=None):
     """
@@ -166,7 +167,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
-    # TODO: fix threshold
     self.ui.imageThresholdSliderWidget.connect("valueChanged(int)", self.onThresholdSliderValueChanged)
     self.ui.imageThresholdSliderWidget.connect(
       "sliderPressed()",
@@ -461,6 +461,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onResetCameraButton(self):
     logging.info("onResetCameraButton()")
+    self.ui.imageThresholdSliderWidget.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
   def onPreviousButton(self):
