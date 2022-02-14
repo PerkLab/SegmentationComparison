@@ -491,16 +491,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.logic.sessionComparisonCount != 0 and factor == 1:
       self.logic.updateComparisonData()
 
+    self.logic.nextPair = self.logic.getPairFromSurveyTable()
     if factor == -1:
-      leftScanName = self.logic.surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT - 1)
-      rightScanName = self.logic.surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT - 1)
-      leftModelName = leftScanName.split("_")[1]
-      rightModelName = rightScanName.split("_")[1]
-      scanName = leftScanName.split("_")[0] + "_" + leftScanName.split("_")[2]
-      self.logic.nextPair = [scanName, leftModelName, rightModelName]
       self.logic.surveyDF = self.logic.previousDF.pop(-1)
     else:
-      self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
+      if not self.logic.nextPair:
+        self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
       self.logic.addRecordInTable()
     self.ui.imageThresholdSliderWidget.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
@@ -937,6 +933,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if self.sessionComparisonCount != 0:
       self.previousPair = self.nextPair
     self.nextPair = nextModelPair
+
+  def getPairFromSurveyTable(self):
+    leftScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.LEFT - 1)
+    rightScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.RIGHT - 1)
+    if leftScanName == "" and rightScanName == "":
+      return
+    leftModelName = leftScanName.split("_")[1]
+    rightModelName = rightScanName.split("_")[1]
+    scanName = leftScanName.split("_")[0] + "_" + leftScanName.split("_")[2]
+    return [scanName, leftModelName, rightModelName]
 
   def centerAndRotateCamera(self, volume, viewNode):
     # Compute the RAS coordinates of the center of the volume
