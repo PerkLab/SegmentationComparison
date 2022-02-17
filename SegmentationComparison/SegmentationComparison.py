@@ -127,6 +127,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   LAST_INPUT_PATH_SETTING = "SegmentationComparison/LastInputPath"
   LAST_OUTPUT_PATH_SETTING = "SegmentationComparison/LastOutputPath"
   THRESHOLD_SLIDER_MIDDLE_VALUE = 152
+  ICON_SIZE_MID = 42
+  ICON_SIZE = 54
 
   def __init__(self, parent=None):
     """
@@ -165,19 +167,15 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Connections
 
     # These connections ensure that we update parameter node when scene is closed
-    self.addObserver(slicer.mrmlScene,
-                     slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
-    self.addObserver(slicer.mrmlScene,
-                     slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
+    self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
     self.ui.imageThresholdSliderWidget.connect("valueChanged(int)", self.onThresholdSliderValueChanged)
-    self.ui.imageThresholdSliderWidget.connect(
-      "sliderPressed()",
-      lambda: logging.info("Threshold slider pressed.")
-    )
+    self.ui.imageThresholdSliderWidget.setValue(self.THRESHOLD_SLIDER_MIDDLE_VALUE)
+
     thresholdPercentage = self.getThresholdPercentage(self.ui.imageThresholdSliderWidget.value)
     self.ui.thresholdPercentageLabel.text = str(int(thresholdPercentage)) + "%"
 
@@ -189,37 +187,72 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if lastOutputPath != "":
       self.ui.outputDirectorySelector.directory = lastOutputPath
 
-    # Inputs
+    # Make some collapsible buttons exclusive
+
+    self.ui.inputsCollapsibleButton.connect('contentsCollapsed(bool)', self.onInputsCollapsed)
+    self.ui.comparisonCollapsibleButton.connect('contentsCollapsed(bool)', self.onComparisonCollapsed)
+    self.ui.inputsCollapsibleButton.collapsed = False
+    self.ui.comparisonCollapsibleButton.collapsed = True
+
+    # Set up button connections and icons
+
     self.ui.csvPathSelector.connect("currentPathChanged(const QString)", self.onCSVPathChanged)
     self.ui.clearCSVPathButton.connect("clicked()", self.onClearButtonPressed)
     self.ui.inputDirectorySelector.connect("directoryChanged(const QString)", self.onInputVolumeDirectorySelected)
+    inputPushButton = self.ui.inputDirectorySelector.findChild("QPushButton")
+    inputPushButton.setIconSize(qt.QSize(self.ICON_SIZE_MID, self.ICON_SIZE_MID))
     self.ui.loadButton.connect('clicked()', self.onLoadButton)
+    self.ui.loadButton.setIconSize(qt.QSize(self.ICON_SIZE_MID, self.ICON_SIZE_MID))
 
-    # Comparison
+    self.ui.inputsCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
+    self.ui.comparisonCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
+    self.ui.settingsCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
+
     self.ui.resetCameraButton.connect('clicked()', self.onResetCameraButton)
-    self.ui.leftGroup.buttonClicked.connect(self.onLeftGroup)
-    self.ui.rightGroup.buttonClicked.connect(self.onRightGroup)
-    self.ui.nextButton.connect('clicked()', self.onNextButton)
-    self.ui.previousButton.connect('clicked()', self.onPreviousButton)
+    self.ui.resetCameraButton.setIconSize(qt.QSize(self.ICON_SIZE_MID, self.ICON_SIZE_MID))
+    self.ui.leftBetterButton.connect('clicked()', self.onLeftBetterClicked)
+    self.ui.leftBetterButton.setIconSize(qt.QSize(int(self.ICON_SIZE * 1.5), self.ICON_SIZE))
+    self.ui.leftBetterButton.setText("")
+    self.ui.rightBetterButton.connect('clicked()', self.onRightBetterClicked)
+    self.ui.rightBetterButton.setIconSize(qt.QSize(int(self.ICON_SIZE * 1.5), self.ICON_SIZE))
+    self.ui.rightBetterButton.setText("")
+    self.ui.equalButton.connect('clicked()', self.onEqualClicked)
+    self.ui.equalButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
+    self.ui.equalButton.setText("")
     self.ui.saveButton.connect('clicked()', self.onSaveButton)
+    self.ui.saveButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
+
+    # Add icons to buttons
+
+    settings = slicer.app.userSettings()
+    styleSetting = settings.value("Styles/Style")
+    if styleSetting[:4].lower() == "dark":
+      self.ui.loadButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/input_dark_48px.svg")))
+      self.ui.leftBetterButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/left_side_better_dark_72px.svg")))
+      self.ui.rightBetterButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/right_side_better_dark_72px.svg")))
+      self.ui.equalButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/equal_dark_48px.svg")))
+      self.ui.saveButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/save_alt_dark_48px.svg")))
+    else:
+      self.ui.loadButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/input_48px.svg")))
+      self.ui.leftBetterButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/left_side_better_72px.svg")))
+      self.ui.rightBetterButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/right_side_better_72px.svg")))
+      self.ui.equalButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/equal_48px.svg")))
+      self.ui.saveButton.setIcon(qt.QIcon(self.logic.resourcePath("Icons/save_alt_48px.svg")))
 
     # Settings
+
     self.ui.outputDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
 
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
-    # sets the name of each button in the survey
-    # e.g. L_3 corresponds to the left side recieving 3 stars
-    self.setNameOfButtons(self.ui.leftGroup, "L_")
-    self.setNameOfButtons(self.ui.rightGroup, "R_")
+  def onInputsCollapsed(self, collapsed):
+    if collapsed == False:
+      self.ui.comparisonCollapsibleButton.collapsed = True
 
-  def setNameOfButtons(self, buttonGroup, startOfName):
-    index = 1
-    for button in buttonGroup.buttons():
-      buttonName = startOfName + str(index)
-      button.setAccessibleName(buttonName)
-      index += 1
+  def onComparisonCollapsed(self, collapsed):
+    if collapsed == False:
+      self.ui.inputsCollapsibleButton.collapsed = True
 
   # set the output directory to the input directory as a default
   def onInputVolumeDirectorySelected(self, selectedPath):
@@ -338,10 +371,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
     self._updatingGUIFromParameterNode = True
 
-    # Update node selectors and sliders
-    self.ui.imageThresholdSliderWidget.value = float(
-      self._parameterNode.GetParameter("Threshold"))
-
     # All the GUI updates are done
     self._updatingGUIFromParameterNode = False
 
@@ -426,9 +455,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.logic.setSurveyHistory(csvPath)
         self.logic.setSurveyTable(csvPath)
 
-        # self.logic.loadAndApplyTransforms(self.ui.inputDirectorySelector.directory)
-        self.changeScene(0)
+        self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
+        self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+
         self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
+        self.ui.inputsCollapsibleButton.collapsed = True
+        self.ui.comparisonCollapsibleButton.collapsed = False
 
       except Exception as e:
         qt.QApplication.restoreOverrideCursor()
@@ -470,103 +502,44 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.imageThresholdSliderWidget.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
-  def onPreviousButton(self):
-    logging.info("onPreviousButton()")
-    # prevent wraparound
-    if self.logic.sessionComparisonCount != 0:
-      self.changeScene(-1)
-
-  def onNextButton(self):
-    logging.info("onNextButton()")
-    self.changeScene(1)
-
-  def changeScene(self, factor):
-    # Change pair of images being evaluated. Factor -1 is used for previous image, 0 is for current image, and +1 is
-    self.uncheckSurveyButtons()
-    self.logic.sessionComparisonCount += factor
-    self.logic.totalComparisonCount += factor
+  def changeScene(self, score=0.5):
+    """
+    Change pair of images being evaluated.
+    """
+    self.logic.sessionComparisonCount += 1
+    self.logic.totalComparisonCount += 1
     self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
     self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
-
-    if self.logic.sessionComparisonCount != 0 and factor == 1:
-      self.logic.updateComparisonData()
+    self.logic.addRecordInTable(score)
 
     self.logic.nextPair = self.logic.getPairFromSurveyTable()
-    if factor == -1:
-      self.logic.surveyDF = self.logic.previousDF.pop(-1)
-    else:
-      if not self.logic.nextPair:
-        self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
-      self.logic.addRecordInTable()
-    self.ui.imageThresholdSliderWidget.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
+
+    if not self.logic.nextPair:
+      self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
+
     self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
-    self.repopulateSurveyButtons()
-    self.enablePreviousAndNextButtons()
+  def onLeftBetterClicked(self):
+    logging.info("Left side better clicked")
+    self.logic.updateComparisonData(1.0)
+    self.changeScene(1.0)
 
-  def enablePreviousAndNextButtons(self):
-    # This function exists to ensure that, when these two buttons are enabled,
-    # they aren't allowing the user to click previous on the first volume.
-    # or next on the last volume. Also, the two compared models have to be rated
-    # before moving forward or back.
-    if self.logic.sessionComparisonCount == 0:
-      self.ui.previousButton.setEnabled(False)
-    else:
-      self.ui.previousButton.setEnabled(True)
+  def onEqualClicked(self):
+    logging.info("Tie button clicked")
+    self.logic.updateComparisonData(0.5)
+    self.changeScene(0.5)
 
-    if self.ui.leftGroup.checkedButton() and self.ui.rightGroup.checkedButton():
-      self.ui.nextButton.setEnabled(True)
-    else:
-      self.ui.nextButton.setEnabled(False)
-
-  def onLeftGroup(self):
-    rating = self.ui.leftGroup.checkedButton().accessibleName
-    self.onRating(rating)
-    ratingString = rating.split("_")[-1]
-    logging.info(f"Rating of {ratingString} selected for left volume.")
-
-  def onRightGroup(self):
-    rating = self.ui.rightGroup.checkedButton().accessibleName
-    self.onRating(rating)
-    ratingString = rating.split("_")[-1]
-    logging.info(f"Rating of {ratingString} selected for right volume.")
+  def onRightBetterClicked(self):
+    logging.info("Right side better clicked")
+    self.logic.updateComparisonData(0.0)
+    self.changeScene(0.0)
 
   def onRating(self, rating):
     # Prevents rating before any volumes have been loaded
     if self.logic.scansAndModelsDict:
-      self.enablePreviousAndNextButtons()
       self.logic.recordRatingInTable(rating)
     else:
       slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
-      self.uncheckSurveyButtons()
-
-  def repopulateSurveyButtons(self):
-    # This function uses the table of survey results to display prior answers
-
-    leftModelRating = self.logic.surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT)
-    rightModelRating = self.logic.surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT)
-
-    leftSurveyButton = "L_"+str(leftModelRating)
-    rightSurveyButton = "R_"+str(rightModelRating)
-
-    allButtons = self.ui.leftGroup.buttons() + self.ui.rightGroup.buttons()
-    for button in allButtons:
-      if button.accessibleName == rightSurveyButton:
-        button.setChecked(True)
-
-      if button.accessibleName == leftSurveyButton:
-        button.setChecked(True)
-
-  def uncheckSurveyButtons(self):
-    self.ui.leftGroup.setExclusive(False)
-    self.ui.rightGroup.setExclusive(False)
-
-    allButtons = self.ui.leftGroup.buttons() + self.ui.rightGroup.buttons()
-    for button in allButtons:
-      button.setChecked(False)
-
-    self.ui.rightGroup.setExclusive(True)
-    self.ui.leftGroup.setExclusive(True)
 
   def onSaveButton(self):
     logging.info("onSaveButton()")
@@ -574,8 +547,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     try:
       if confirmation:
         surveyTable = self._parameterNode.GetNodeReference(self.logic.RESULTS_TABLE_NAME)
-        if (surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT) == "" and
-          surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT) == ""):
+        if (surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT_MODEL_COL) == "" and
+          surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT_MODEL_COL) == ""):
           surveyTable.RemoveRow(self.logic.totalComparisonCount)
         # Save history as csv
         historySaveFilename = self.ui.outputDirectorySelector.directory + "/comparison_history_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
@@ -608,13 +581,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   N_COLUMNS_VIEW = 2
   N_ROWS_VIEW = 1
   VIEW_FIRST_DIGITS = 587
-  LEFT = 2
-  RIGHT = 4
+  LEFT_MODEL_COL = 2
+  RIGHT_MODEL_COL = 4
   RESULTS_TABLE_NAME = "SurveyResultsTable"
   DEFAULT_ELO = 1000
   K = 32
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
   WINDOW = 50
+  ELO_HISTORY_TABLE = "EloHistoryTable"
 
   def __init__(self):
     """
@@ -626,13 +600,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyDF = None
     self.surveyStarted = False
     self.surveyFinished = False
-    self.nextPair = None
+    self.nextPair = None             # will be used as list[volumeName, modelName1, modelName2]
     self.previousPair = None
-    self.sessionComparisonCount = 0
+    self.sessionComparisonCount = 0  # How many comparisons have happened in this Slicer session
     self.totalComparisonCount = 0
     self.surveyTable = None
-    self.previousDF = []
-    
+
   def setDefaultParameters(self, parameterNode):
     """
     Initialize parameter node with default settings.
@@ -659,21 +632,29 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       if self.surveyTable:
         slicer.mrmlScene.RemoveNode(self.surveyTable)
 
-      self.surveyTable = slicer.vtkMRMLTableNode()
-      addedSurveyTable = slicer.mrmlScene.AddNode(self.surveyTable)
-      addedSurveyTable.SetName(self.RESULTS_TABLE_NAME)
-      parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, addedSurveyTable.GetID())
+      self.surveyTable = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', self.RESULTS_TABLE_NAME)
+      parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, self.surveyTable.GetID())
 
-      col = self.surveyTable.AddColumn()
-      col.SetName('Comparison')
-      col = self.surveyTable.AddColumn()
-      col.SetName('Model_L')
-      col = self.surveyTable.AddColumn()
-      col.SetName('Score_L')
-      col = self.surveyTable.AddColumn()
-      col.SetName('Model_R')
-      col = self.surveyTable.AddColumn()
-      col.SetName('Score_R')
+      # Prepare data types for table columns
+
+      indexCol = vtk.vtkIntArray()
+      indexCol.SetName("Comparison")
+      model1Col = vtk.vtkStringArray()
+      model1Col.SetName("Model_L")
+      score1Col = vtk.vtkDoubleArray()
+      score1Col.SetName("Score_L")
+      model2Col = vtk.vtkStringArray()
+      model2Col.SetName("Model_R")
+      score2Col = vtk.vtkDoubleArray()
+      score2Col.SetName("Score_R")
+
+      # Populate table with columns
+
+      self.surveyTable.AddColumn(indexCol)
+      self.surveyTable.AddColumn(model1Col)
+      self.surveyTable.AddColumn(score1Col)
+      self.surveyTable.AddColumn(model2Col)
+      self.surveyTable.AddColumn(score2Col)
 
       self.totalComparisonCount = 0
 
@@ -722,6 +703,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       self.surveyDF = pd.DataFrame(data)
       self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
 
+  def resourcePath(self, filename):
+    moduleDir = os.path.dirname(slicer.util.modulePath(self.moduleName))
+    return os.path.join(moduleDir, "Resources", filename)
+
   def resetScene(self):
     slicer.mrmlScene.Clear()
 
@@ -742,6 +727,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.sessionComparisonCount = 0
 
   def loadAndApplyTransforms(self, directory):
+    """
+    Deprecated. Prepare input volumes in correct position and orientation instead of using this function.
+    This function was added in case volumes are not consistently oriented in anatomical coordinates.
+    This would allow storing transforms (to RAS) for each volume.
+    """
     transformsInDirectory = list(f for f in os.listdir(directory) if f.endswith(".h5"))
 
     if transformsInDirectory != []:
@@ -834,7 +824,26 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
                                "[patient_id]_[AI_model_name]_[sequence_name].nrrd: "+str(e))
       import traceback
       traceback.print_exc()
-    return
+
+    # Create a table to store Elo score evolution over time
+
+    eloHistoryTable = parameterNode.GetNodeReference(self.ELO_HISTORY_TABLE)
+    if eloHistoryTable == None:
+      eloHistoryTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", self.ELO_HISTORY_TABLE)
+      parameterNode.SetNodeReferenceID(self.ELO_HISTORY_TABLE, eloHistoryTable.GetID())
+
+    eloHistoryTable.RemoveAllColumns()
+
+    indexCol = vtk.vtkIntArray()
+    indexCol.SetName("Comparison")
+    eloHistoryTable.AddColumn(indexCol)
+
+    modelNames = self.scansAndModelsDict.keys()
+    for modelName in modelNames:
+      eloCol = vtk.vtkDoubleArray()
+      eloCol.SetName(modelName)
+      eloHistoryTable.AddColumn(eloCol)
+
 
   def calculateExpectedScores(self, leftElo, rightElo):
     leftExpected = 1 / (1 + 10 ** ((rightElo - leftElo) / 400))
@@ -854,8 +863,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return (diff - rmin) / (rmax - rmin) * (tmax - tmin) + tmin
 
   def calculateActualScores(self):
-    leftRating = int(self.surveyTable.GetCellText(self.sessionComparisonCount - 1, self.LEFT))
-    rightRating = int(self.surveyTable.GetCellText(self.sessionComparisonCount - 1, self.RIGHT))
+    leftRating = int(self.surveyTable.GetCellText(self.sessionComparisonCount - 1, self.LEFT_MODEL_COL))
+    rightRating = int(self.surveyTable.GetCellText(self.sessionComparisonCount - 1, self.RIGHT_MODEL_COL))
     leftActual = self.calculateScaledScore(leftRating - rightRating)
     rightActual = self.calculateScaledScore(rightRating - leftRating)
     return leftActual, rightActual
@@ -863,17 +872,19 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   def calculateNewElo(self, current, actual, expected):
     return current + self.K * (actual - expected)
 
-  def updateComparisonData(self):
-    # Store previous dataframe state
-    self.previousDF.append(self.surveyDF.copy())
+  def updateComparisonData(self, leftScore = 0.5):
+    if leftScore < 0.0 or leftScore > 1.0:
+      logging.error("Score cannot be outside 0.0 and 1.0!")
 
     # Update elo scores
+
     leftModel = self.nextPair[1]
     rightModel = self.nextPair[2]
     leftElo = self.surveyDF.query(f"ModelName == '{leftModel}'").iloc[0]["Elo"]
     rightElo = self.surveyDF.query(f"ModelName == '{rightModel}'").iloc[0]["Elo"]
     leftExpected, rightExpected = self.calculateExpectedScores(leftElo, rightElo)
-    leftActual, rightActual = self.calculateActualScores()
+    leftActual = leftScore
+    rightActual = 1.0 - leftScore
     leftNewElo = self.calculateNewElo(leftElo, leftActual, leftExpected)
     rightNewElo = self.calculateNewElo(rightElo, rightActual, rightExpected)
     leftModelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == leftModel][0]
@@ -889,6 +900,22 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       self.surveyDF.at[modelIdx, "GamesPlayed"] += 1
       self.surveyDF.at[modelIdx, "TimeLastPlayed"] = datetime.datetime.now()
       self.scansAndModelsDict[model][scan] += 1
+
+    # Add a row to the elo history table
+
+    parameterNode = self.getParameterNode()
+    eloHistoryTable = parameterNode.GetNodeReference(self.ELO_HISTORY_TABLE)
+
+    eloHistoryTable.AddEmptyRow()
+    rowIdx = eloHistoryTable.GetNumberOfRows() - 1
+    eloHistoryTable.SetCellText(rowIdx, 0, str(self.sessionComparisonCount))
+
+    modelNames = self.scansAndModelsDict.keys()
+    i = 0
+    for modelName in modelNames:
+      i += 1
+      modelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == modelName][0]
+      eloHistoryTable.SetCellText(rowIdx, i, str(self.surveyDF.at[modelIdx, "Elo"]))
 
   def getNextPair(self, isNewCsv):
     # Randomly choose first matchup
@@ -935,8 +962,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.nextPair = nextModelPair
 
   def getPairFromSurveyTable(self):
-    leftScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.LEFT - 1)
-    rightScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.RIGHT - 1)
+    leftScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.LEFT_MODEL_COL - 1)
+    rightScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.RIGHT_MODEL_COL - 1)
     if leftScanName == "" and rightScanName == "":
       return
     leftModelName = leftScanName.split("_")[1]
@@ -945,8 +972,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return [scanName, leftModelName, rightModelName]
 
   def centerAndRotateCamera(self, volume, viewNode):
-    # Compute the RAS coordinates of the center of the volume
-    imageData = volume.GetImageData() 
+    """
+    Center camera of viewNode on volume specified.
+    """
+    imageData = volume.GetImageData()
     volumeCenter_Ijk = imageData.GetCenter()
 
     IjkToRasMatrix = vtk.vtkMatrix4x4()
@@ -954,26 +983,19 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     volumeCenter_Ras = np.array(IjkToRasMatrix.MultiplyFloatPoint(np.append(volumeCenter_Ijk, [1])))
     volumeCenter_Ras = volumeCenter_Ras[:3]
 
-    # Center camera on the volume, rotate camera so top is superior, position camera behind volume
     camerasLogic = slicer.modules.cameras.logic()
     cameraNode = camerasLogic.GetViewActiveCameraNode(viewNode)
     camera = cameraNode.GetCamera()
 
     camera.SetFocalPoint(volumeCenter_Ras)
     camera.SetViewUp([0, 0, 1])
-    camera.SetPosition(volumeCenter_Ras + np.array([0, -2500, 0]))
+    camera.SetPosition(volumeCenter_Ras + np.array([0, -2000, 0]))
     cameraNode.ResetClippingRange()
 
-    # equivalent to pressing the "center 3D view" button
-    layoutManager = slicer.app.layoutManager()
-
-    threeDWidget = layoutManager.viewWidget(viewNode)
-    threeDView = threeDWidget.threeDView()
-    threeDView.resetFocalPoint()
-
-  # Manually define volume property for volume rendering
   def setVolumeRenderingProperty(self, volumeNode, window, level):
-
+    """
+    Manually define volume property for volume rendering.
+    """
     vrLogic = slicer.modules.volumerendering.logic()
     displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
@@ -1095,18 +1117,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
       slicer.app.setRenderPaused(False)
 
-  def addRecordInTable(self):
-    # Prevent new row from being added after pressing next following a previous click
-    if self.totalComparisonCount < self.surveyTable.GetNumberOfRows():
-      return
-    # Add new record to table
+  def addRecordInTable(self, leftScore):
     self.surveyTable.AddEmptyRow()
     rowIdx = self.surveyTable.GetNumberOfRows() - 1
     namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
                              self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
     self.surveyTable.SetCellText(rowIdx, 0, str(rowIdx + 1))
     self.surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
+    self.surveyTable.SetCellText(rowIdx, 2, str(leftScore))
     self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
+    self.surveyTable.SetCellText(rowIdx, 4, str(1.0-leftScore))
 
   def recordRatingInTable(self, buttonId):
     if not self.surveyStarted:
@@ -1118,9 +1138,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     rowIdx = self.totalComparisonCount
 
     if side == "L":
-      self.surveyTable.SetCellText(rowIdx, self.LEFT, str(rating))
+      self.surveyTable.SetCellText(rowIdx, self.LEFT_MODEL_COL, str(rating))
     elif side == "R":
-      self.surveyTable.SetCellText(rowIdx, self.RIGHT, str(rating))
+      self.surveyTable.SetCellText(rowIdx, self.RIGHT_MODEL_COL, str(rating))
     else:
       slicer.util.errorDisplay("ERROR: Invalid button Id")
 
