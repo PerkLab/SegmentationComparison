@@ -243,8 +243,38 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.ui.outputDirectorySelector.connect("directoryChanged(const QString)", self.onOutputDirectorySelected)
 
+    showIds = slicer.util.settingsValue(self.logic.SHOW_IDS_SETTING, self.logic.SHOW_IDS_DEFAULT, converter=slicer.util.toBool)
+    self.ui.displayIdCheckBox.checked = showIds
+    self.ui.displayIdCheckBox.connect("stateChanged(int)", self.onDisplayIdChecked)
+
+    fov = slicer.util.settingsValue(self.logic.CAMERA_FOV_SETTING, self.logic.CAMERA_FOV_DEFAULT, converter=int)
+    self.ui.fovSpinBox.value = fov
+    self.ui.fovSpinBox.connect("valueChanged(int)", self.onFovValueChanged)
+
+    self.ui.resetSettingsButton.connect("clicked()", self.onResetSettingsClicked)
+
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
+
+  def onResetSettingsClicked(self):
+    logging.info("onResetSettingsClicked()")
+    self.ui.displayIdCheckBox.checked = self.logic.SHOW_IDS_DEFAULT
+    self.ui.fovSpinBox.value = self.logic.CAMERA_FOV_DEFAULT
+
+  def onFovValueChanged(self, value):
+    logging.info("onFovValueChanged({})".format(value))
+    settings = slicer.app.userSettings()
+    settings.setValue(self.logic.CAMERA_FOV_SETTING, str(value))
+    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+
+  def onDisplayIdChecked(self, checked):
+    logging.info("onDisplayIdChecked({})".format(checked))
+    settings = slicer.app.userSettings()
+    if checked != 0:
+      settings.setValue(self.logic.SHOW_IDS_SETTING, "true")
+    else:
+      settings.setValue(self.logic.SHOW_IDS_SETTING, "false")
+    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
   def onInputsCollapsed(self, collapsed):
     if collapsed == False:
@@ -589,6 +619,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
   WINDOW = 50
   ELO_HISTORY_TABLE = "EloHistoryTable"
+
+  SHOW_IDS_SETTING = "SegmentationComparison/ShowVolumeIds"
+  SHOW_IDS_DEFAULT = False
+  CAMERA_FOV_SETTING = "SegmentationComparison/CameraFov"
+  CAMERA_FOV_DEFAULT = 1800
 
   def __init__(self):
     """
@@ -987,9 +1022,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     cameraNode = camerasLogic.GetViewActiveCameraNode(viewNode)
     camera = cameraNode.GetCamera()
 
+    #todo: We should probably use parallel projection and actual FOV. Now FOV is just camera-focus distance.
+    fov = slicer.util.settingsValue(self.CAMERA_FOV_SETTING, self.CAMERA_FOV_DEFAULT, converter=int)
+
     camera.SetFocalPoint(volumeCenter_Ras)
     camera.SetViewUp([0, 0, 1])
-    camera.SetPosition(volumeCenter_Ras + np.array([0, -2000, 0]))
+    camera.SetPosition(volumeCenter_Ras + np.array([0, -fov, 0]))
     cameraNode.ResetClippingRange()
 
   def setVolumeRenderingProperty(self, volumeNode, window, level):
@@ -1067,13 +1105,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return volumeName
 
   def prepareDisplay(self, thresholdValue):
-    # Prepare views and show models in each view
+    """
+    Prepare views and show models in each view
+    :param thresholdValue: intensity value around which opaque voxels should gradually transition to transparent
+    """
     parameterNode = self.getParameterNode()
 
     # Prevent errors from previous or next buttons when the volumes haven't been loaded in yet
     if self.scansAndModelsDict:
-      # Code related to the 3D view is taken from here:
-      # https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html
       slicer.app.setRenderPaused(True)
 
       customID = self.VIEW_FIRST_DIGITS + self.sessionComparisonCount
@@ -1103,11 +1142,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
         viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
 
-      # Add identifiers/titles in the 3D views
+      showIds = slicer.util.settingsValue(self.SHOW_IDS_SETTING, False, converter=slicer.util.toBool)
+
       for i in range(0, slicer.app.layoutManager().threeDViewCount):
         viewWidget = slicer.app.layoutManager().threeDWidget(i)
-        viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight,
-                                                           viewWidget.objectName.split("ThreeDWidget")[1])
+        if showIds:
+          viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight,
+                                                             viewWidget.objectName.split("ThreeDWidget")[1])
+        else:
+          viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, "")
+
         viewWidget.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
 
       if existingViewNode:
