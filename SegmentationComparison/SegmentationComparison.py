@@ -9,6 +9,7 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
 import numpy as np
+rng = np.random.default_rng()
 
 try:
   import pandas as pd
@@ -616,6 +617,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   RESULTS_TABLE_NAME = "SurveyResultsTable"
   DEFAULT_ELO = 1000
   K = 32
+  EXP_SCALING_FACTOR = 0.01
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
   WINDOW = 50
   ELO_HISTORY_TABLE = "EloHistoryTable"
@@ -879,7 +881,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       eloCol.SetName(modelName)
       eloHistoryTable.AddColumn(eloCol)
 
-
   def calculateExpectedScores(self, leftElo, rightElo):
     leftExpected = 1 / (1 + 10 ** ((rightElo - leftElo) / 400))
     rightExpected = 1 / (1 + 10 ** ((leftElo - rightElo) / 400))
@@ -907,12 +908,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   def calculateNewElo(self, current, actual, expected):
     return current + self.K * (actual - expected)
 
-  def updateComparisonData(self, leftScore = 0.5):
+  def updateComparisonData(self, leftScore=0.5):
     if leftScore < 0.0 or leftScore > 1.0:
       logging.error("Score cannot be outside 0.0 and 1.0!")
 
     # Update elo scores
-
     leftModel = self.nextPair[1]
     rightModel = self.nextPair[2]
     leftElo = self.surveyDF.query(f"ModelName == '{leftModel}'").iloc[0]["Elo"]
@@ -973,14 +973,23 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         leastModel = self.surveyDF.query(f"TimeLastPlayed == '{minGamesDF['TimeLastPlayed'].min()}'").iloc[0]["ModelName"]
         nextModelPair.append(leastModel)
 
-      # Pick model with closest elo score
+      # Sample list of models with probability based on elo difference
       leastModelElo = self.surveyDF.query(f"ModelName == '{leastModel}'").iloc[0]["Elo"]
-      sortedEloDiffIdx = (self.surveyDF["Elo"] - leastModelElo).abs().argsort()
-      if self.surveyDF.iloc[sortedEloDiffIdx[1]]["ModelName"] != leastModel:
-        closestModelIdx = 1
+      eloDiffList = (self.surveyDF["Elo"] - leastModelElo).abs().tolist()
+      print(eloDiffList)
+      if all(eloDiff == 0 for eloDiff in eloDiffList):
+        validModel = False
+        while not validModel:
+          chosenModelIdx = rng.integers(0, len(eloDiffList))
+          if self.surveyDF.iloc[chosenModelIdx]["ModelName"] != leastModel:
+            validModel = True
       else:
-        closestModelIdx = 0
-      closestEloModel = self.surveyDF.iloc[sortedEloDiffIdx[closestModelIdx]]["ModelName"]
+        samplingWeights = self.getModelSamplingProbability(eloDiffList)
+        print(samplingWeights)
+        chosenModelIdx = random.choices(list(enumerate(eloDiffList)), weights=samplingWeights)[0][0]
+        print(chosenModelIdx)
+      closestEloModel = self.surveyDF.iloc[chosenModelIdx]["ModelName"]
+      print(closestEloModel)
       nextModelPair.append(closestEloModel)
 
     # Choose scan with least number of games
@@ -995,6 +1004,15 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if self.sessionComparisonCount != 0:
       self.previousPair = self.nextPair
     self.nextPair = nextModelPair
+
+  def getModelSamplingProbability(self, eloDiffList):
+    probs = []
+    for eloDiff in eloDiffList:
+      if eloDiff == 0:
+        probs.append(0)
+      else:
+        probs.append(math.exp(-self.EXP_SCALING_FACTOR * eloDiff))
+    return probs
 
   def getPairFromSurveyTable(self):
     leftScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.LEFT_MODEL_COL - 1)
