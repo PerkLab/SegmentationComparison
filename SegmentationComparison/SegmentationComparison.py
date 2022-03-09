@@ -976,7 +976,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       # Sample list of models with probability based on elo difference
       leastModelElo = self.surveyDF.query(f"ModelName == '{leastModel}'").iloc[0]["Elo"]
       eloDiffList = (self.surveyDF["Elo"] - leastModelElo).abs().tolist()
-      print(eloDiffList)
       if all(eloDiff == 0 for eloDiff in eloDiffList):
         validModel = False
         while not validModel:
@@ -985,11 +984,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
             validModel = True
       else:
         samplingWeights = self.getModelSamplingProbability(eloDiffList)
-        print(samplingWeights)
         chosenModelIdx = random.choices(list(enumerate(eloDiffList)), weights=samplingWeights)[0][0]
-        print(chosenModelIdx)
       closestEloModel = self.surveyDF.iloc[chosenModelIdx]["ModelName"]
-      print(closestEloModel)
       nextModelPair.append(closestEloModel)
 
     # Choose scan with least number of games
