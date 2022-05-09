@@ -127,6 +127,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   LAST_INPUT_PATH_SETTING = "SegmentationComparison/LastInputPath"
   LAST_OUTPUT_PATH_SETTING = "SegmentationComparison/LastOutputPath"
+  LAST_CSV_PATH_SETTING = "SegmentationComparison/LastCSVPath"
   THRESHOLD_SLIDER_MIDDLE_VALUE = 152
   ICON_SIZE_MID = 42
   ICON_SIZE = 54
@@ -140,8 +141,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic = None
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
-
-    self.defaultSurveyMessage = "Rate the displayed volumes on a scale from 1 to 5:"
 
   def setup(self):
     """
@@ -187,6 +186,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     lastOutputPath = slicer.util.settingsValue(self.LAST_OUTPUT_PATH_SETTING, "")
     if lastOutputPath != "":
       self.ui.outputDirectorySelector.directory = lastOutputPath
+
+    # lastCSVPath = slicer.util.settingsValue(self.LAST_CSV_PATH_SETTING, "")
+    # if lastCSVPath != "":
+    #   self.ui.csvPathSelector.currentPath = lastCSVPath
 
     # Make some collapsible buttons exclusive
 
@@ -301,6 +304,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if selectedPath:
       logging.info(f"onCSVPathChanged({selectedPath}")
       settings = qt.QSettings()
+      settings.setValue(self.LAST_CSV_PATH_SETTING, selectedPath)
+      # Change output csv save path to match loaded csv
       lastOutputPath = os.path.abspath(os.path.join(selectedPath, os.pardir))
       self.ui.outputDirectorySelector.directory = lastOutputPath
       settings.setValue(self.LAST_OUTPUT_PATH_SETTING, lastOutputPath)
@@ -477,19 +482,32 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
         # Reset the scene
         self.logic.resetScene()
+        # Reset comparison counter
+        self.logic.sessionComparisonCount = 0
+        self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
 
         if self.logic.surveyStarted:
           self.logic.surveyStarted = False
 
-        self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
         csvPath = self.ui.csvPathSelector.currentPath
-        self.logic.setSurveyHistory(csvPath)
+        comparisonHistoryPath = None
+        eloHistoryPath = None
+        if csvPath:
+          csvFileName = os.path.basename(csvPath)
+          timestamp = csvFileName.split("_")[-1]
+          csvRoot = os.path.abspath(os.path.join(csvPath, os.pardir))
+          comparisonHistoryPath = os.path.join(csvRoot, "comparison_history_" + timestamp)
+          eloHistoryPath = os.path.join(csvRoot, "elo_history_" + timestamp)
+
+        self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
+        self.logic.setSurveyHistory(comparisonHistoryPath)
+        self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
+        self.logic.setEloHistoryTable(eloHistoryPath)
         self.logic.setSurveyTable(csvPath)
 
         self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
         self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
 
-        self.loadSurveyMessage(self.ui.inputDirectorySelector.directory)
         self.ui.inputsCollapsibleButton.collapsed = True
         self.ui.comparisonCollapsibleButton.collapsed = False
 
@@ -505,28 +523,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         qt.QApplication.restoreOverrideCursor()
         waitDialog.hide()
         waitDialog.deleteLater()
-
-  def loadSurveyMessage(self, directory):
-    # Change survey message if "message.txt" found in input directory
-
-    textFilesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".txt"))
-
-    customMessage = False
-
-    for textIndex, textFile in enumerate(textFilesInDirectory):
-      name = str(os.path.basename(textFile))
-      path = directory + "/" + name
-
-      if name == "message.txt":
-        with open(path) as f:
-          message = f.read()
-
-        self.ui.surveyMessage.setText(message)
-        customMessage = True
-
-    # Reset to default if "message.txt" is not in directory
-    if customMessage == False:
-      self.ui.surveyMessage.setText(self.defaultSurveyMessage)
 
   def onResetCameraButton(self):
     logging.info("onResetCameraButton()")
@@ -565,29 +561,25 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic.updateComparisonData(0.0)
     self.changeScene(0.0)
 
-  def onRating(self, rating):
-    # Prevents rating before any volumes have been loaded
-    if self.logic.scansAndModelsDict:
-      self.logic.recordRatingInTable(rating)
-    else:
-      slicer.util.infoDisplay("Volumes must be loaded in order to start the survey")
-
   def onSaveButton(self):
     logging.info("onSaveButton()")
     confirmation = slicer.util.confirmYesNoDisplay("Exit survey and save results?")
     try:
       if confirmation:
+        # Save history as csv
         surveyTable = self._parameterNode.GetNodeReference(self.logic.RESULTS_TABLE_NAME)
         if (surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT_MODEL_COL) == "" and
-          surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT_MODEL_COL) == ""):
+            surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT_MODEL_COL) == ""):
           surveyTable.RemoveRow(self.logic.totalComparisonCount)
-        # Save history as csv
-        historySaveFilename = self.ui.outputDirectorySelector.directory + "/comparison_history_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
-        slicer.util.saveNode(surveyTable, historySaveFilename)
+        comparisonHistoryFilename = self.ui.outputDirectorySelector.directory + "/comparison_history_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
+        slicer.util.saveNode(surveyTable, comparisonHistoryFilename)
+        # Elo history
+        eloHistoryTable = self._parameterNode.GetNodeReference(self.logic.ELO_HISTORY_TABLE)
+        eloHistoryFilename = self.ui.outputDirectorySelector.directory + "/elo_history_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
+        slicer.util.saveNode(eloHistoryTable, eloHistoryFilename)
 
         # Save pandas dataframe to csv
-        resultsSavePath = self.ui.outputDirectorySelector.directory + "/elo_scores_" + time.strftime(
-          "%Y%m%d-%H%M%S") + ".csv"
+        resultsSavePath = self.ui.outputDirectorySelector.directory + "/elo_scores_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
         self.logic.surveyDF.to_csv(resultsSavePath, index=False)
 
         slicer.util.infoDisplay(f"Results successfully saved to: {resultsSavePath}")
@@ -650,15 +642,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not parameterNode.GetParameter("Threshold"):
       parameterNode.SetParameter("Threshold", "0")
 
-  def setSurveyHistory(self, csvPath):
+  def setSurveyHistory(self, comparisonHistoryPath):
     parameterNode = self.getParameterNode()
-    if csvPath:
+    if comparisonHistoryPath:
       # Load corresponding comparison history csv
-      csvFileName = os.path.basename(csvPath)
-      timestamp = csvFileName.split("_")[-1]
-      csvRoot = os.path.abspath(os.path.join(csvPath, os.pardir))
-      historyPath = os.path.join(csvRoot, "comparison_history_" + timestamp)
-      self.surveyTable = slicer.util.loadTable(historyPath)
+      self.surveyTable = slicer.util.loadTable(comparisonHistoryPath)
       self.surveyTable.SetName(self.RESULTS_TABLE_NAME)
       parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, self.surveyTable.GetID())
       self.totalComparisonCount = self.surveyTable.GetNumberOfRows()
@@ -670,10 +658,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(self.surveyTable)
 
       self.surveyTable = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', self.RESULTS_TABLE_NAME)
-      parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, self.surveyTable.GetID())
 
       # Prepare data types for table columns
-
       indexCol = vtk.vtkIntArray()
       indexCol.SetName("Comparison")
       model1Col = vtk.vtkStringArray()
@@ -686,14 +672,39 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       score2Col.SetName("Score_R")
 
       # Populate table with columns
-
       self.surveyTable.AddColumn(indexCol)
       self.surveyTable.AddColumn(model1Col)
       self.surveyTable.AddColumn(score1Col)
       self.surveyTable.AddColumn(model2Col)
       self.surveyTable.AddColumn(score2Col)
+      parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, self.surveyTable.GetID())
 
       self.totalComparisonCount = 0
+
+  def setEloHistoryTable(self, eloHistoryPath):
+    parameterNode = self.getParameterNode()
+    if eloHistoryPath:
+      eloHistoryTable = slicer.util.loadTable(eloHistoryPath)
+      eloHistoryTable.SetName(self.ELO_HISTORY_TABLE)
+      parameterNode.SetNodeReferenceID(self.ELO_HISTORY_TABLE, eloHistoryTable.GetID())
+    else:
+      # Create a table to store Elo score evolution over time
+      eloHistoryTable = parameterNode.GetNodeReference(self.ELO_HISTORY_TABLE)
+      if eloHistoryTable == None:
+        eloHistoryTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", self.ELO_HISTORY_TABLE)
+        parameterNode.SetNodeReferenceID(self.ELO_HISTORY_TABLE, eloHistoryTable.GetID())
+
+      eloHistoryTable.RemoveAllColumns()
+
+      indexCol = vtk.vtkIntArray()
+      indexCol.SetName("Comparison")
+      eloHistoryTable.AddColumn(indexCol)
+
+      modelNames = self.scansAndModelsDict.keys()
+      for modelName in modelNames:
+        eloCol = vtk.vtkDoubleArray()
+        eloCol.SetName(modelName)
+        eloHistoryTable.AddColumn(eloCol)
 
   def setSurveyTable(self, csvPath):
     if csvPath:
@@ -760,8 +771,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     # If the layout is not changed from the custom one, then it will result in weird problems when numbering the views
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
-    # Reset comparison counter
-    self.sessionComparisonCount = 0
 
   def loadAndApplyTransforms(self, directory):
     """
@@ -862,25 +871,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       import traceback
       traceback.print_exc()
 
-    # Create a table to store Elo score evolution over time
-
-    eloHistoryTable = parameterNode.GetNodeReference(self.ELO_HISTORY_TABLE)
-    if eloHistoryTable == None:
-      eloHistoryTable = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", self.ELO_HISTORY_TABLE)
-      parameterNode.SetNodeReferenceID(self.ELO_HISTORY_TABLE, eloHistoryTable.GetID())
-
-    eloHistoryTable.RemoveAllColumns()
-
-    indexCol = vtk.vtkIntArray()
-    indexCol.SetName("Comparison")
-    eloHistoryTable.AddColumn(indexCol)
-
-    modelNames = self.scansAndModelsDict.keys()
-    for modelName in modelNames:
-      eloCol = vtk.vtkDoubleArray()
-      eloCol.SetName(modelName)
-      eloHistoryTable.AddColumn(eloCol)
-
   def calculateExpectedScores(self, leftElo, rightElo):
     leftExpected = 1 / (1 + 10 ** ((rightElo - leftElo) / 400))
     rightExpected = 1 / (1 + 10 ** ((leftElo - rightElo) / 400))
@@ -943,7 +933,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     eloHistoryTable.AddEmptyRow()
     rowIdx = eloHistoryTable.GetNumberOfRows() - 1
-    eloHistoryTable.SetCellText(rowIdx, 0, str(self.sessionComparisonCount))
+    eloHistoryTable.SetCellText(rowIdx, 0, str(self.totalComparisonCount))
 
     modelNames = self.scansAndModelsDict.keys()
     i = 0
@@ -1185,22 +1175,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyTable.SetCellText(rowIdx, 2, str(leftScore))
     self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
     self.surveyTable.SetCellText(rowIdx, 4, str(1.0-leftScore))
-
-  def recordRatingInTable(self, buttonId):
-    if not self.surveyStarted:
-      self.surveyStarted = True
-
-    # Split the name
-    side = buttonId.split("_")[0]
-    rating = int(buttonId.split("_")[1])
-    rowIdx = self.totalComparisonCount
-
-    if side == "L":
-      self.surveyTable.SetCellText(rowIdx, self.LEFT_MODEL_COL, str(rating))
-    elif side == "R":
-      self.surveyTable.SetCellText(rowIdx, self.RIGHT_MODEL_COL, str(rating))
-    else:
-      slicer.util.errorDisplay("ERROR: Invalid button Id")
 
   def threshold(self, inputVolume, imageThreshold):
     if not inputVolume:
