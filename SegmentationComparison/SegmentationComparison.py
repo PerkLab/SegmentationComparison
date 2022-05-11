@@ -533,6 +533,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     Change pair of images being evaluated.
     """
+    # Remove previous view nodes to reduce latency
+    self.logic.removeViews()
+
     self.logic.sessionComparisonCount += 1
     self.logic.totalComparisonCount += 1
     self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
@@ -1122,15 +1125,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       customID = self.VIEW_FIRST_DIGITS + self.sessionComparisonCount
       namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
                                self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
-      existingViewNode = False
 
-      # If the view node already exists, center the camera before switching views
-      # This prevents the user from seeing the camera centering
-      if parameterNode.GetNodeReference("View" + namesVolumesToDisplay[0] + str(customID)):
-        existingViewNode = True
-      else: 
-        self.makeCustomView(customID, self.N_ROWS_VIEW, self.N_COLUMNS_VIEW, namesVolumesToDisplay, 0)
-        slicer.app.layoutManager().setLayout(customID)
+      self.makeCustomView(customID, self.N_ROWS_VIEW, self.N_COLUMNS_VIEW, namesVolumesToDisplay, 0)
+      slicer.app.layoutManager().setLayout(customID)
 
       # Iterate through each volume, and display it in its own corresponding view
       for volumeIndex, volumeName in enumerate(namesVolumesToDisplay):
@@ -1158,12 +1155,29 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         viewWidget.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
 
-      if existingViewNode:
-        # the pause allows for the camera centering to actually complete before switching views
-        time.sleep(0.1)
-        slicer.app.layoutManager().setLayout(customID)
-
       slicer.app.setRenderPaused(False)
+
+  def removeViews(self):
+    if self.scansAndModelsDict:  # Prevent error from next button before volumes loaded
+      views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
+      views.UnRegister(None)
+      for view in views:
+        slicer.mrmlScene.RemoveNode(view)
+
+      displays = slicer.mrmlScene.GetNodesByClass("vtkMRMLVolumeRenderingDisplayNode")
+      displays.UnRegister(None)
+      for display in displays:
+        slicer.mrmlScene.RemoveNode(display)
+
+      cameras = slicer.mrmlScene.GetNodesByClass("vtkMRMLCameraNode")
+      cameras.UnRegister(None)
+      for camera in cameras:
+        slicer.mrmlScene.RemoveNode(camera)
+
+      properties = slicer.mrmlScene.GetNodesByClass("vtkMRMLVolumePropertyNode")
+      properties.UnRegister(None)
+      for property in properties:
+        slicer.mrmlScene.RemoveNode(property)
 
   def addRecordInTable(self, leftScore):
     self.surveyTable.AddEmptyRow()
