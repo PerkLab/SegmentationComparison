@@ -173,6 +173,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
+    self.ui.imageThresholdSliderWidget.setMinimum(0)
+    self.ui.imageThresholdSliderWidget.setMaximum(self.logic.THRESHOLD_SLIDER_RESOLUTION)
     self.ui.imageThresholdSliderWidget.connect("valueChanged(int)", self.onThresholdSliderValueChanged)
     self.ui.imageThresholdSliderWidget.setValue(self.THRESHOLD_SLIDER_MIDDLE_VALUE)
 
@@ -429,32 +431,39 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   # Threshold the selected volume(s)
   def onThresholdSliderValueChanged(self, value):
+    """
+    Callback function for threshold slider.
+    @param value: expected to have minimum value of 0.0, and maximum of logic.THRESHOLD_SLIDER_RESOLUTION
+    @return: None
+    """
     thresholdPercentage = self.getThresholdPercentage(value)
     self.ui.thresholdPercentageLabel.text = str(round(thresholdPercentage)) + "%"
+
+    if (self.logic.nextPair is None) or (self.logic.nextPair == False):
+      logging.warning("Not updating volume rendering, because volumes are not displayed yet")
+      return
+
     try:
-      # Prevent thresholding when volumes have not yet been loaded
-      if self.logic.nextPair:
-        # Iterate through currently displayed volumes
-        currentSceneData = self.logic.nextPair
-        for i in range(1, len(currentSceneData)):
-          volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[i])
-          inputVolume = self._parameterNode.GetNodeReference(volumeName)
-          # prevents invalid volume error when loading the widget
-          if inputVolume is not None:
-            self.logic.threshold(inputVolume, value)
+      currentSceneData = self.logic.nextPair
+      for i in range(1, len(currentSceneData)):  # Iterate through currently displayed volumes
+        volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[i])
+        inputVolume = self._parameterNode.GetNodeReference(volumeName)
+        if inputVolume is not None:  # prevents invalid volume error when loading the widget
+          self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
     except Exception as e:
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
 
   def getThresholdPercentage(self, value):
-    thresholdPercentage = self.logic.calculateScaledScore(
-      value,
-      rmin=0,
-      rmax=255 + self.logic.WINDOW,
-      tmin=100,
-      tmax=0
-    )
+    """
+    Returns the slider value as a percentage of the total range (0..100).
+    @param value: slider value directly from slider widget
+    @return: value scaled between 0 and 100.
+    """
+    minimumValue = self.ui.imageThresholdSliderWidget.minimum
+    maximumValue = self.ui.imageThresholdSliderWidget.maximum
+    thresholdPercentage = value / (maximumValue - minimumValue) * 100.0
     return thresholdPercentage
 
   def onLoadButton(self):
@@ -614,8 +623,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   K = 32
   EXP_SCALING_FACTOR = 0.01
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
-  WINDOW = 50
   ELO_HISTORY_TABLE = "EloHistoryTable"
+
+  THRESHOLD_SLIDER_RESOLUTION = 300  # Must be positive integer
+  WINDOW = 50
+  IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
 
   SHOW_IDS_SETTING = "SegmentationComparison/ShowVolumeIds"
   SHOW_IDS_DEFAULT = False
@@ -1039,8 +1051,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   def setVolumeRenderingProperty(self, volumeNode, window, level):
     """
-    Manually define volume property for volume rendering.
+    Manually define volume property for volume rendering. Volume intensity range is assumed to be [0..255].
+    @param volumeNode: vtkMRMLScalarVolumeNode
+    @param window: range of intensity to be displayed (max-min)
+    @param level: center value of intensity range to be displayed
+    @returns: display node for volume, or None on error
     """
+    if volumeNode is None:
+      logging.warning("setVolumeRenderingProperty() is called with invalid volumeNode")
+      return None
+
     vrLogic = slicer.modules.volumerendering.logic()
     displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
@@ -1049,11 +1069,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       vrLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
       displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
 
-    upper = min(265, level + window/2)
-    lower = max(2, level - window/2)
+    # Assuming that the displayable range is [0..255], and the range to display is [L-(W/2)..L+(W/2)]
+
+    upper = min(self.IMAGE_INTENSITY_MAX + window, level + window/2)
+    lower = max(-window, level - window/2)
 
     if upper <= lower:
-      upper = lower + 1
+      upper = lower + 1  # Make sure the displayed intensity range is valid.
 
     p0 = lower
     p1 = lower + (upper - lower)*0.15
@@ -1190,10 +1212,24 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
     self.surveyTable.SetCellText(rowIdx, 4, str(1.0-leftScore))
 
-  def threshold(self, inputVolume, imageThreshold):
-    if not inputVolume:
-      raise ValueError("Input volume is invalid")
-    self.setVolumeRenderingProperty(inputVolume, self.WINDOW, imageThreshold - self.WINDOW / 2)
+  def setVolumeOpacityThreshold(self, inputVolume, imageThresholdPercent):
+    """
+    Sets up volume rendering for specified volume with opacity threshold.
+    @param inputVolume: vtkMRMLScalarVolumeNode
+    @param imageThresholdPercent: opacity treshold in percentage [0..100] float
+    @return: None
+    """
+    # [0..100] >> [0..MAX], where MAX is typically IMAGE_INTENSITY_MAX + 25, if intensity window is 50.
+
+    maxThreshold = self.IMAGE_INTENSITY_MAX + self.WINDOW / 2.0
+    imageThreshold = imageThresholdPercent * maxThreshold / 100.0
+
+    window = self.WINDOW
+    level = imageThreshold
+
+    displayNode = self.setVolumeRenderingProperty(inputVolume, window, level)
+    if not displayNode:
+      logging.error("Could not set up volume rendering property!")
 
 #
 # SegmentationComparisonTest
@@ -1233,32 +1269,6 @@ class SegmentationComparisonTest(ScriptedLoadableModuleTest):
 
     # Get/create input data
 
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('SegmentationComparison1')
-    self.delayDisplay('Loaded test data set')
-
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
-
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
-
     # Test the module logic
-
-    logic = SegmentationComparisonLogic()
-
-    # Test algorithm with non-inverted threshold
-    logic.threshold(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
-
-    # Test algorithm with inverted threshold
-    logic.threshold(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
     self.delayDisplay('Test passed')
