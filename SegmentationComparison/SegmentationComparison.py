@@ -34,20 +34,14 @@ class SegmentationComparison(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    # TODO: make this more human readable by adding spaces
     self.parent.title = "SegmentationComparison"
-    # TODO: set categories (folders where the module shows up in the module selector)
     self.parent.categories = ["Ultrasound"]
-    # TODO: add here list of module names that this module requires
     self.parent.dependencies = []
-    # TODO: replace with "Firstname Lastname (Organization)"
-    self.parent.contributors = ["Keiran Barr (Perk Lab)"]
-    # TODO: update with short description of the module and a link to online module documentation
+    self.parent.contributors = ["Tamas Ungi (Queen's University)"]
     self.parent.helpText = """
 This module is for comparing volumes, and contains a built-in survey portion to record the preferences of the user.
 See more information in <a href="https://github.com/keiranbarr/SegmentationComparison">module documentation</a>.
 """
-    # TODO: replace with organization, grant and thanks
     self.parent.acknowledgementText = """
 This work was partially supported by the Queen's High School Internship in Computing
 """
@@ -131,6 +125,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   THRESHOLD_SLIDER_MIDDLE_VALUE = 152
   ICON_SIZE_MID = 42
   ICON_SIZE = 54
+
+  LAYOUT_DUAL_3D = 876
 
   def __init__(self, parent=None):
     """
@@ -262,6 +258,41 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure parameter node is initialized (needed for module reload)
     self.initializeParameterNode()
 
+    self.addCustomLayouts()
+
+  def addCustomLayouts(self):
+    layoutLogic = slicer.app.layoutManager().layoutLogic()
+
+    dual3dLayout = \
+      """
+      <layout type="horizontal">
+        <item>
+          <view class="vtkMRMLViewNode" singletontag="1">
+            <property name="viewLabel" action="default">1</property>
+          </view>
+        </item>
+        <item>
+          <view class="vtkMRMLViewNode" singletontag="2" type="secondary">
+            <property name="viewlabel" action="default">2</property>
+          </view>
+        </item>
+      </layout>
+      """
+    if not layoutLogic.GetLayoutNode().SetLayoutDescription(self.LAYOUT_DUAL_3D, dual3dLayout):
+      layoutLogic.GetLayoutNode().AddLayoutDescription(self.LAYOUT_DUAL_3D, dual3dLayout)
+
+    # Add custom layout to standard layout selector menu
+
+    mainWindow = slicer.util.mainWindow()
+    viewToolBar = mainWindow.findChild('QToolBar', 'ViewToolBar')
+    layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
+    layoutSwitchActionParent = layoutMenu
+
+    layoutSwitchAction = layoutSwitchActionParent.addAction("3D segmentation comparison")
+    layoutSwitchAction.setData(self.LAYOUT_DUAL_3D)
+    layoutSwitchAction.setIcon(qt.QIcon(':Icons/Go.png'))
+    layoutSwitchAction.setToolTip('Dual 3D comparison')
+
   def onResetSettingsClicked(self):
     logging.info("onResetSettingsClicked()")
     self.ui.displayIdCheckBox.checked = self.logic.SHOW_IDS_DEFAULT
@@ -340,6 +371,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Make sure parameter node exists and observed
     self.initializeParameterNode()
     slicer.util.setDataProbeVisible(False)  # We don't use data probe, and it takes valuable space from widget.
+
+    slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_3D)  # Setting this layout creates all views automatically
 
   def exit(self):
     """
@@ -440,7 +473,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.thresholdPercentageLabel.text = str(round(thresholdPercentage)) + "%"
 
     if (self.logic.nextPair is None) or (self.logic.nextPair == False):
-      logging.warning("Not updating volume rendering, because volumes are not displayed yet")
+      logging.info("Not updating volume rendering, because volumes are not displayed yet")
       return
 
     try:
@@ -542,14 +575,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     Change pair of images being evaluated.
     """
-    # Remove previous view nodes to reduce latency
-    self.logic.removeViews()
-
     self.logic.sessionComparisonCount += 1
     self.logic.totalComparisonCount += 1
     self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
     self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
     self.logic.addRecordInTable(score)
+
+    self.logic.hideCurrentVolumes()  # Hide current pair before selecting new pair
 
     self.logic.nextPair = self.logic.getPairFromSurveyTable()
 
@@ -613,9 +645,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  N_COLUMNS_VIEW = 2
-  N_ROWS_VIEW = 1
-  VIEW_FIRST_DIGITS = 587
   LEFT_MODEL_COL = 2
   RIGHT_MODEL_COL = 4
   RESULTS_TABLE_NAME = "SurveyResultsTable"
@@ -644,7 +673,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyDF = None
     self.surveyStarted = False
     self.surveyFinished = False
-    self.nextPair = None             # will be used as list[volumeName, modelName1, modelName2]
+    self.nextPair = None             # will be used as list[volumeName, AiModelName1, AiModelName2]
     self.previousPair = None
     self.sessionComparisonCount = 0  # How many comparisons have happened in this Slicer session
     self.totalComparisonCount = 0
@@ -772,20 +801,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   def resetScene(self):
     slicer.mrmlScene.Clear()
-
-    # The following lines clean up things that aren't affected by clearing the scene
-    views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
-    views.UnRegister(None)
-    for view in views:
-      slicer.mrmlScene.RemoveNode(view)
-
-    cameras = slicer.mrmlScene.GetNodesByClass("vtkMRMLCameraNode")
-    cameras.UnRegister(None)
-    for camera in cameras:
-      slicer.mrmlScene.RemoveNode(camera)
-
-    # If the layout is not changed from the custom one, then it will result in weird problems when numbering the views
-    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
 
   def loadAndApplyTransforms(self, directory):
     """
@@ -1103,103 +1118,108 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     return displayNode
 
-  def makeCustomView(self, customLayoutId, numberOfRows, numberOfColumns, volumesToDisplay, firstViewNode):
-
-    numberOfVolumes = len(volumesToDisplay)
-
-    customLayout = '<layout type="vertical">'
-    viewIndex = 0
-    for rowIndex in range(numberOfRows):
-      customLayout += '<item><layout type="horizontal">'
-      for colIndex in range(numberOfColumns):
-        if viewIndex < numberOfVolumes: 
-          name = str(viewIndex + firstViewNode)
-          tag = volumesToDisplay[viewIndex]
-        else: 
-          name = ""
-          tag = ""
-        customLayout += '<item><view class="vtkMRMLViewNode" singletontag="' + tag
-        customLayout += '"><property name="viewlabel" action="default">'+name+'</property></view></item>'
-        viewIndex += 1
-      customLayout += '</layout></item>'
-      
-    customLayout += '</layout>'
-    if not slicer.app.layoutManager().layoutLogic().GetLayoutNode().SetLayoutDescription(customLayoutId, customLayout):
-        slicer.app.layoutManager().layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId, customLayout)
-
   def nameFromPatientSequenceAndModel(self, patientSequence, model):
     # Get the full volume name by combining elements of patientSequence and model
     patientId = patientSequence.split("_")[0]
     volumeName = str(patientId) + "_" + model + "_" + "_".join(patientSequence.split("_")[1:])
     return volumeName
 
+  def hideCurrentVolumes(self):
+    """
+    Hides current pair of volumes.
+    :returns: None
+    """
+    parameterNode = self.getParameterNode()
+
+    volumeRenderingLogic = slicer.modules.volumerendering.logic()
+
+    volumeName1 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1])
+    volumeNode1 = parameterNode.GetNodeReference(volumeName1)
+    displayNode1 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode1)
+    displayNode1.SetVisibility(False)
+
+    volumeName2 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])
+    volumeNode2 = parameterNode.GetNodeReference(volumeName2)
+    displayNode2 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode2)
+    displayNode2.SetVisibility(False)
+
   def prepareDisplay(self, thresholdValue):
     """
     Prepare views and show models in each view
     :param thresholdValue: intensity value around which opaque voxels should gradually transition to transparent
+    :returns: None
     """
     parameterNode = self.getParameterNode()
 
     # Prevent errors from previous or next buttons when the volumes haven't been loaded in yet
-    if self.scansAndModelsDict:
-      slicer.app.setRenderPaused(True)
 
-      customID = self.VIEW_FIRST_DIGITS + self.sessionComparisonCount
-      namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
-                               self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
+    if not self.scansAndModelsDict:
+      logging.warning("Volumes not loaded yet")
+      return
 
-      self.makeCustomView(customID, self.N_ROWS_VIEW, self.N_COLUMNS_VIEW, namesVolumesToDisplay, 0)
-      slicer.app.layoutManager().setLayout(customID)
+    slicer.app.setRenderPaused(True)
 
-      # Iterate through each volume, and display it in its own corresponding view
-      for volumeIndex, volumeName in enumerate(namesVolumesToDisplay):
-        volume = parameterNode.GetNodeReference(volumeName)
+    # Set up left side view
 
-        viewNode = slicer.mrmlScene.GetSingletonNode(volumeName, "vtkMRMLViewNode")
-        viewNode.LinkedControlOn()
+    volumeName1 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1])
+    volumeNode1 = parameterNode.GetNodeReference(volumeName1)
+    viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    viewNode1.LinkedControlOn()
+    volumeDisplayNode1 = self.setVolumeRenderingProperty(volumeNode1, self.WINDOW, thresholdValue)
+    volumeDisplayNode1.SetViewNodeIDs([viewNode1.GetID()])
+    volumeDisplayNode1.SetVisibility(True)
+    self.centerAndRotateCamera(volumeNode1, viewNode1)
+    viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
+    viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
 
-        displayNode = self.setVolumeRenderingProperty(volume, self.WINDOW, thresholdValue)
-        displayNode.SetViewNodeIDs([viewNode.GetID()])
+    # Set up right side view
 
-        self.centerAndRotateCamera(volume, viewNode)
-        viewNode.SetOrientationMarkerType(viewNode.OrientationMarkerTypeHuman)
-        viewNode.SetOrientationMarkerSize(viewNode.OrientationMarkerSizeSmall)
+    volumeName2 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])
+    volumeNode2 = parameterNode.GetNodeReference(volumeName2)
+    viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+    viewNode2.LinkedControlOn()
+    volumeDisplayNode2 = self.setVolumeRenderingProperty(volumeNode2, self.WINDOW, thresholdValue)
+    volumeDisplayNode2.SetViewNodeIDs([viewNode2.GetID()])
+    volumeDisplayNode2.SetVisibility(True)
+    self.centerAndRotateCamera(volumeNode2, viewNode2)
+    viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
+    viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
 
-      showIds = slicer.util.settingsValue(self.SHOW_IDS_SETTING, False, converter=slicer.util.toBool)
+    # Show volume IDs in views if setting is on
 
-      for i in range(0, slicer.app.layoutManager().threeDViewCount):
-        viewWidget = slicer.app.layoutManager().threeDWidget(i)
-        if showIds:
-          viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight,
-                                                             viewWidget.objectName.split("ThreeDWidget")[1])
-        else:
-          viewWidget.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, "")
+    showIds = slicer.util.settingsValue(self.SHOW_IDS_SETTING, False, converter=slicer.util.toBool)
 
-        viewWidget.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
+    layoutManager = slicer.app.layoutManager()
+    viewWidget1 = None
+    viewWidget2 = None
+    for viewNumber in range(layoutManager.threeDViewCount):
+      threeDWidget = layoutManager.threeDWidget(viewNumber)
+      viewNode = threeDWidget.mrmlViewNode()
+      if viewNode.GetSingletonTag() == "1":
+        viewWidget1 = threeDWidget
+      elif viewNode.GetSingletonTag() == "2":
+        viewWidget2 = threeDWidget
+      else:
+        pass
 
-      slicer.app.setRenderPaused(False)
+    if viewWidget1 is None:
+      logging.error("View 1 not found!")
+      return
+    if viewWidget2 is None:
+      logging.error("View 2 not found!")
+      return
 
-  def removeViews(self):
-    if self.scansAndModelsDict:  # Prevent error from next button before volumes loaded
-      views = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
-      views.UnRegister(None)
-      for view in views:
-        slicer.mrmlScene.RemoveNode(view)
+    if showIds:
+      viewWidget1.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, volumeName1)
+      viewWidget2.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, volumeName2)
+    else:
+      viewWidget1.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, "")
+      viewWidget2.threeDView().cornerAnnotation().SetText(vtk.vtkCornerAnnotation.UpperRight, "")
 
-      displays = slicer.mrmlScene.GetNodesByClass("vtkMRMLVolumeRenderingDisplayNode")
-      displays.UnRegister(None)
-      for display in displays:
-        slicer.mrmlScene.RemoveNode(display)
+    viewWidget1.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
+    viewWidget2.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
 
-      cameras = slicer.mrmlScene.GetNodesByClass("vtkMRMLCameraNode")
-      cameras.UnRegister(None)
-      for camera in cameras:
-        slicer.mrmlScene.RemoveNode(camera)
-
-      properties = slicer.mrmlScene.GetNodesByClass("vtkMRMLVolumePropertyNode")
-      properties.UnRegister(None)
-      for property in properties:
-        slicer.mrmlScene.RemoveNode(property)
+    slicer.app.setRenderPaused(False)
 
   def addRecordInTable(self, leftScore):
     self.surveyTable.AddEmptyRow()
