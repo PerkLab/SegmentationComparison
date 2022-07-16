@@ -122,11 +122,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   LAST_INPUT_PATH_SETTING = "SegmentationComparison/LastInputPath"
   LAST_OUTPUT_PATH_SETTING = "SegmentationComparison/LastOutputPath"
   LAST_CSV_PATH_SETTING = "SegmentationComparison/LastCSVPath"
-  THRESHOLD_SLIDER_MIDDLE_VALUE = 152
+  THRESHOLD_SLIDER_MIDDLE_VALUE = 0.5  # range 0..1
   ICON_SIZE_MID = 42
   ICON_SIZE = 54
 
   LAYOUT_DUAL_3D = 876
+
+  THRESHOLD_SLIDER_RESOLUTION = 300  # Must be positive integer
 
   def __init__(self, parent=None):
     """
@@ -169,13 +171,29 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
 
-    self.ui.imageThresholdSliderWidget.setMinimum(0)
-    self.ui.imageThresholdSliderWidget.setMaximum(self.logic.THRESHOLD_SLIDER_RESOLUTION)
-    self.ui.imageThresholdSliderWidget.connect("valueChanged(int)", self.onThresholdSliderValueChanged)
-    self.ui.imageThresholdSliderWidget.setValue(self.THRESHOLD_SLIDER_MIDDLE_VALUE)
+    # Left side opacity slider
 
-    thresholdPercentage = self.getThresholdPercentage(self.ui.imageThresholdSliderWidget.value)
+    self.ui.leftThresholdSlider.setMinimum(0)
+    self.ui.leftThresholdSlider.setMaximum(self.THRESHOLD_SLIDER_RESOLUTION)
+    self.ui.leftThresholdSlider.connect("valueChanged(int)", self.onLeftSliderChanged)
+    self.ui.leftThresholdSlider.setValue(int(self.THRESHOLD_SLIDER_RESOLUTION * self.THRESHOLD_SLIDER_MIDDLE_VALUE))
+
+    thresholdPercentage = self.getThresholdPercentage(self.ui.leftThresholdSlider.value)
     self.ui.thresholdPercentageLabel.text = str(int(thresholdPercentage)) + "%"
+
+    # Right side opacity slider
+
+    self.ui.rightThresholdSlider.setMinimum(0)
+    self.ui.rightThresholdSlider.setMaximum(self.THRESHOLD_SLIDER_RESOLUTION)
+    self.ui.rightThresholdSlider.connect("valueChanged(int)", self.onRightSliderChanged)
+    self.ui.rightThresholdSlider.setValue(int(self.THRESHOLD_SLIDER_RESOLUTION * self.THRESHOLD_SLIDER_MIDDLE_VALUE))
+
+    rightThresholdPercentage = self.getThresholdPercentage(self.ui.rightThresholdSlider.value)
+    self.ui.rightThresholdLabel.text = str(int(rightThresholdPercentage)) + "%"
+
+    # Other widgets
+
+    self.ui.linkThresholdsButton.connect('toggled(bool)', self.onLinkOpacitiesToggled)
 
     lastInputPath = slicer.util.settingsValue(self.LAST_INPUT_PATH_SETTING, "")
     if lastInputPath != "":
@@ -302,7 +320,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     logging.info("onFovValueChanged({})".format(value))
     settings = slicer.app.userSettings()
     settings.setValue(self.logic.CAMERA_FOV_SETTING, str(value))
-    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+    self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
   def onDisplayIdChecked(self, checked):
     logging.info("onDisplayIdChecked({})".format(checked))
@@ -311,7 +329,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       settings.setValue(self.logic.SHOW_IDS_SETTING, "true")
     else:
       settings.setValue(self.logic.SHOW_IDS_SETTING, "false")
-    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+    self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
   def onInputsCollapsed(self, collapsed):
     if collapsed == False:
@@ -374,6 +392,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_3D)  # Setting this layout creates all views automatically
 
+    viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+    viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
+    viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
+
+    viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+    viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
+    viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
+
   def exit(self):
     """
     Called each time the user opens a different module.
@@ -419,16 +445,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Unobserve previously selected parameter node and add an observer to the newly selected.
     # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
     # those are reflected immediately in the GUI.
-    if self._parameterNode is not None:
-      self.removeObserver(
-        self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-    self._parameterNode = inputParameterNode
-    if self._parameterNode is not None:
-      self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent,
-                       self.updateGUIFromParameterNode)
 
-    # Initial GUI update
-    self.updateGUIFromParameterNode()
+    if self._parameterNode is not None:
+      self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+
+    self._parameterNode = inputParameterNode
+
+    if self._parameterNode is not None:
+      self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
+
+    self.updateGUIFromParameterNode()  # Initial GUI update
 
   def updateGUIFromParameterNode(self, caller=None, event=None):
     """
@@ -439,10 +465,14 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
 
-    # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
-    self._updatingGUIFromParameterNode = True
+    self._updatingGUIFromParameterNode = True  # Prevent recursion
 
-    # All the GUI updates are done
+    leftSliderValue = self.logic.getParameter(self.logic.LEFT_OPACITY_THRESHOLD) * self.THRESHOLD_SLIDER_RESOLUTION
+    self.ui.leftThresholdSlider.value = leftSliderValue
+    rightSliderValue = self.logic.getParameter(self.logic.RIGHT_OPACITY_THRESHOLD) * self.THRESHOLD_SLIDER_RESOLUTION
+    self.ui.rightThresholdSlider.value = rightSliderValue
+    self.ui.linkThresholdsButton.checked = self.logic.getParameter(self.logic.LINK_OPACITIES)
+
     self._updatingGUIFromParameterNode = False
 
   def updateParameterNodeFromGUI(self, caller=None, event=None):
@@ -454,23 +484,28 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self._parameterNode is None or self._updatingGUIFromParameterNode:
       return
 
-    # Modify all properties in a single batch
-    wasModified = self._parameterNode.StartModify()
+    wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
 
-    self._parameterNode.SetParameter("Threshold", str(
-      self.ui.imageThresholdSliderWidget.value))
+    leftSliderParameterValue = self.ui.leftThresholdSlider.value / self.THRESHOLD_SLIDER_RESOLUTION
+    self._parameterNode.SetParameter(self.logic.LEFT_OPACITY_THRESHOLD, str(leftSliderParameterValue))
+    rightSlicerParameterValue = self.ui.rightThresholdSlider.value / self.THRESHOLD_SLIDER_RESOLUTION
+    self._parameterNode.SetParameter(self.logic.RIGHT_OPACITY_THRESHOLD, str(rightSlicerParameterValue))
+    self._parameterNode.SetParameter(self.logic.LINK_OPACITIES, str(self.ui.linkThresholdsButton.checked))
 
     self._parameterNode.EndModify(wasModified)
 
   # Threshold the selected volume(s)
-  def onThresholdSliderValueChanged(self, value):
+  def onLeftSliderChanged(self, value):
     """
-    Callback function for threshold slider.
+    Callback function for left side threshold slider.
     @param value: expected to have minimum value of 0.0, and maximum of logic.THRESHOLD_SLIDER_RESOLUTION
     @return: None
     """
     thresholdPercentage = self.getThresholdPercentage(value)
     self.ui.thresholdPercentageLabel.text = str(round(thresholdPercentage)) + "%"
+
+    if self.ui.linkThresholdsButton.checked == True and self.ui.rightThresholdSlider.value != value:
+      self.ui.rightThresholdSlider.value = value
 
     if (self.logic.nextPair is None) or (self.logic.nextPair == False):
       logging.info("Not updating volume rendering, because volumes are not displayed yet")
@@ -478,11 +513,42 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     try:
       currentSceneData = self.logic.nextPair
-      for i in range(1, len(currentSceneData)):  # Iterate through currently displayed volumes
-        volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[i])
-        inputVolume = self._parameterNode.GetNodeReference(volumeName)
-        if inputVolume is not None:  # prevents invalid volume error when loading the widget
-          self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+      volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[1])
+      inputVolume = self._parameterNode.GetNodeReference(volumeName)
+      if inputVolume is not None:
+        self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+      else:
+        logging.warning("Volume not found by reference: {}".format(volumeName))
+    except Exception as e:
+      slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
+      import traceback
+      traceback.print_exc()
+
+  def onRightSliderChanged(self, value):
+    """
+    Callback function for right side slider widget.
+    :param value: new slider value
+    :returns: None
+    """
+    thresholdPercentage = self.getThresholdPercentage(value)
+    self.ui.rightThresholdLabel.text = str(round(thresholdPercentage)) + "%"
+
+    if self.ui.linkThresholdsButton.checked == True and self.ui.leftThresholdSlider.value != value:
+      self.ui.leftThresholdSlider.value = value
+
+
+    if (self.logic.nextPair is None) or (self.logic.nextPair == False):
+      logging.info("Not updating volume rendering, because volumes are not displayed yet")
+      return
+
+    try:
+      currentSceneData = self.logic.nextPair
+      volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[2])
+      inputVolume = self._parameterNode.GetNodeReference(volumeName)
+      if inputVolume is not None:
+        self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+      else:
+        logging.warning("Volume not found by reference: {}".format(volumeName))
     except Exception as e:
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
@@ -494,12 +560,24 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     @param value: slider value directly from slider widget
     @return: value scaled between 0 and 100.
     """
-    minimumValue = self.ui.imageThresholdSliderWidget.minimum
-    maximumValue = self.ui.imageThresholdSliderWidget.maximum
+    minimumValue = self.ui.leftThresholdSlider.minimum
+    maximumValue = self.ui.leftThresholdSlider.maximum
     thresholdPercentage = value / (maximumValue - minimumValue) * 100.0
     return thresholdPercentage
 
+  def onLinkOpacitiesToggled(self, toggled):
+    """
+    Callback function for link button.
+    :returns: None
+    """
+    if toggled:
+      self.ui.rightThresholdSlider.value = self.ui.leftThresholdSlider.value
+
   def onLoadButton(self):
+    """
+    Callback function for load button.
+    :returns: None
+    """
     logging.info("onLoadButton()")
     if self.logic.surveyStarted:
       confirmation = slicer.util.confirmYesNoDisplay("WARNING: This will delete all survey progress. Proceed?")
@@ -548,7 +626,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.logic.setSurveyTable(csvPath)
 
         self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
-        self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+        self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
         self.ui.inputsCollapsibleButton.collapsed = True
         self.ui.comparisonCollapsibleButton.collapsed = False
@@ -568,8 +646,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onResetCameraButton(self):
     logging.info("onResetCameraButton()")
-    self.ui.imageThresholdSliderWidget.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
-    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+    self.ui.leftThresholdSlider.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
+    self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
   def changeScene(self, score=0.5):
     """
@@ -588,7 +666,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if not self.logic.nextPair:
       self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
 
-    self.logic.prepareDisplay(self.ui.imageThresholdSliderWidget.value)
+    self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
+
+    self.onLeftSliderChanged(self.ui.leftThresholdSlider.value)
+    self.onRightSliderChanged(self.ui.rightThresholdSlider.value)
 
   def onLeftBetterClicked(self):
     logging.info("Left side better clicked")
@@ -654,7 +735,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
   ELO_HISTORY_TABLE = "EloHistoryTable"
 
-  THRESHOLD_SLIDER_RESOLUTION = 300  # Must be positive integer
+
   WINDOW = 50
   IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
 
@@ -662,6 +743,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   SHOW_IDS_DEFAULT = False
   CAMERA_FOV_SETTING = "SegmentationComparison/CameraFov"
   CAMERA_FOV_DEFAULT = 1800
+
+  # Module parameter names
+
+  LEFT_OPACITY_THRESHOLD = "LeftOpacityThreshold"  # range 0..1
+  RIGHT_OPACITY_THRESHOLD = "RightOpacityThreshold"  # range 0..1
+  LINK_OPACITIES = "LinkOpacities"
+
 
   def __init__(self):
     """
@@ -683,8 +771,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     Initialize parameter node with default settings.
     """
-    if not parameterNode.GetParameter("Threshold"):
-      parameterNode.SetParameter("Threshold", "0")
+    if not parameterNode.GetParameter(self.LEFT_OPACITY_THRESHOLD):
+      parameterNode.SetParameter(self.LEFT_OPACITY_THRESHOLD, "0.5")
+
+    if not parameterNode.GetParameter(self.RIGHT_OPACITY_THRESHOLD):
+      parameterNode.SetParameter(self.RIGHT_OPACITY_THRESHOLD, "0.5")
+
+    if not parameterNode.GetParameter(self.LINK_OPACITIES):
+      parameterNode.SetParameter(self.LINK_OPACITIES, "True")
 
   def setSurveyHistory(self, comparisonHistoryPath):
     parameterNode = self.getParameterNode()
@@ -811,8 +905,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     transformsInDirectory = list(f for f in os.listdir(directory) if f.endswith(".h5"))
 
     if transformsInDirectory != []:
-      print("Found transforms: " + str(len(transformsInDirectory)))
-
       # starts empty, but is used to track which volumes have had a transform applied
       transformsArray = np.full_like(self.volumesArray, "")
 
@@ -825,7 +917,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
         # The transform to be applied to all volumes without a corresponding transform
         if name == "DefaultTransform":
-          print("Found default transform")
           loadedTransform = slicer.util.loadTransform(directory + "/" + transformFile)
 
           for scene in range(self.volumesArray.shape[0]):
@@ -841,8 +932,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
                 
         # exception transform, will be applied to a specific volume
         elif name.startswith("Scene_") and name.endswith("_Transform"):
-          print("Found exception transform")
-
           sceneNumber = int(name.split("_")[1])
           modelNumber = int(name.split("_")[3])
 
@@ -860,7 +949,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
                                   "specific volumes")
 
     else:
-      print("No transforms found in selected folder. To add a transform, save them in the same folder as "
+      logging.warning("No transforms found in selected folder. To add a transform, save them in the same folder as "
             "the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, "
             "and Scene_x_Model_y_Transform.h5 for specific volumes")
 
@@ -869,8 +958,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     # Store a dictionary with patient_sequence names as keys and lists of AI models as elements.
     # For example, patient_sequence 405_axial was evaluated with the AI models UNet_1 and UNet_2.
 
-    # Logging to the console
-    print('\n',"LOAD BUTTON PRESSED, RESETTING THE SCENE",'\n')
+    logging.info("Load button pressed, resetting the scene")
 
     # List nrrd volumes in indicated directory
     print("Checking directory: " + directory)
@@ -1021,6 +1109,26 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       self.previousPair = self.nextPair
     self.nextPair = nextModelPair
 
+  def getParameter(self, parameterName):
+    """
+    Returns a parameter from the module parameter node converted to the intended type.
+    :param parameterName: name of the parameter
+    :returns: value of the parameter
+    """
+    parameterNode = self.getParameterNode()
+
+    if parameterName == self.RIGHT_OPACITY_THRESHOLD or parameterName == self.LEFT_OPACITY_THRESHOLD:
+      valueStr = parameterNode.GetParameter(parameterName)
+      return float(valueStr)
+
+    elif parameterName == self.LINK_OPACITIES:
+      valueStr = parameterNode.GetParameter(parameterName)
+      return True if valueStr.lower() == "true" else False
+
+    else:
+      logging.warning("Cannot find parameter name: {}".format(parameterName))
+      return
+
   def getModelSamplingProbability(self, eloDiffList):
     probs = []
     for eloDiff in eloDiffList:
@@ -1143,10 +1251,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     displayNode2 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode2)
     displayNode2.SetVisibility(False)
 
-  def prepareDisplay(self, thresholdValue):
+  def prepareDisplay(self, leftThreshold, rightThreshold):
     """
     Prepare views and show models in each view
-    :param thresholdValue: intensity value around which opaque voxels should gradually transition to transparent
+    :param leftThreshold: intensity value around which opaque voxels should gradually transition to transparent, left side
+    :param rightThreshold: threshold for right side volume
     :returns: None
     """
     parameterNode = self.getParameterNode()
@@ -1165,12 +1274,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     volumeNode1 = parameterNode.GetNodeReference(volumeName1)
     viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
     viewNode1.LinkedControlOn()
-    volumeDisplayNode1 = self.setVolumeRenderingProperty(volumeNode1, self.WINDOW, thresholdValue)
+    volumeDisplayNode1 = self.setVolumeRenderingProperty(volumeNode1, self.WINDOW, leftThreshold)
     volumeDisplayNode1.SetViewNodeIDs([viewNode1.GetID()])
     volumeDisplayNode1.SetVisibility(True)
     self.centerAndRotateCamera(volumeNode1, viewNode1)
-    viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
-    viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
 
     # Set up right side view
 
@@ -1178,12 +1285,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     volumeNode2 = parameterNode.GetNodeReference(volumeName2)
     viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
     viewNode2.LinkedControlOn()
-    volumeDisplayNode2 = self.setVolumeRenderingProperty(volumeNode2, self.WINDOW, thresholdValue)
+    volumeDisplayNode2 = self.setVolumeRenderingProperty(volumeNode2, self.WINDOW, rightThreshold)
     volumeDisplayNode2.SetViewNodeIDs([viewNode2.GetID()])
     volumeDisplayNode2.SetVisibility(True)
     self.centerAndRotateCamera(volumeNode2, viewNode2)
-    viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
-    viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
 
     # Show volume IDs in views if setting is on
 
