@@ -1,5 +1,6 @@
 import os
 import unittest
+import json
 import logging
 import vtk
 import qt
@@ -139,6 +140,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.logic = None
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
+    self.sceneImporting = False
+
+    self.comparisonResultsTable = None  # Only use this while importing saved scene from file!
+    self.eloHistoryTable = None
 
   def setup(self):
     """
@@ -165,8 +170,16 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Connections
 
     # These connections ensure that we update parameter node when scene is closed
+
     self.addObserver(slicer.mrmlScene, slicer.mrmlScene.StartCloseEvent, self.onSceneStartClose)
     self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
+
+    # Observers for beginning and end of loading a previously saved scene
+
+    self.removeObservers(self.onSceneImportStart)
+    self.addObserver(slicer.mrmlScene, slicer.vtkMRMLScene.StartImportEvent, self.onSceneImportStart)
+    self.removeObservers(self.onSceneImportEnd)
+    self.addObserver(slicer.mrmlScene, slicer.vtkMRMLScene.EndImportEvent, self.onSceneImportEnd)
 
     # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
     # (in the selected parameter node).
@@ -424,6 +437,36 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.parent.isEntered:
       self.initializeParameterNode()
 
+  def onSceneImportStart(self, caller=None, event=None):
+    self.sceneImporting = True
+    parameterNode = self.getParameterNode()
+    self.comparisonResultsTable = parameterNode.GetNodeReference(self.logic.SURVEY_RESULTS_TABLE)
+    self.eloHistoryTable = parameterNode.GetNodeReference(self.logic.ELO_HISTORY_TABLE)
+
+  def onSceneImportEnd(self, caller=None, event=None):
+    qt.QTimer.singleShot(0, self.finishImportingScene)  # Put this call in Qt event loop so it is not executed too early
+
+  def finishImportingScene(self):
+    """
+    Call this function to handle duplicate nodes after loading a scene from files.
+    :returns: None
+    """
+    parameterNode = self.getParameterNode()
+
+    # Keep new tables and remove old ones, because this module only handles one session at a time
+
+    currentResultsTable = parameterNode.GetNodeReference(self.logic.SURVEY_RESULTS_TABLE)
+    if self.comparisonResultsTable != currentResultsTable:
+      slicer.mrmlScene.RemoveNode(self.comparisonResultsTable)
+      self.comparisonResultsTable = currentResultsTable
+
+    currentEloHistoryTable = parameterNode.GetNodeReference(self.logic.ELO_HISTORY_TABLE)
+    if self.eloHistoryTable != currentEloHistoryTable:
+      slicer.mrmlScene.RemoveNode(self.eloHistoryTable)
+      self.eloHistoryTable = currentEloHistoryTable
+
+    self.sceneImporting = False
+
   def initializeParameterNode(self):
     """
     Ensure parameter node exists and observed.
@@ -507,13 +550,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.ui.linkThresholdsButton.checked == True and self.ui.rightThresholdSlider.value != value:
       self.ui.rightThresholdSlider.value = value
 
-    if (self.logic.nextPair is None) or (self.logic.nextPair == False):
+    nextPair = self.logic.nextPair
+    if (nextPair is None) or (nextPair == False):
       logging.info("Not updating volume rendering, because volumes are not displayed yet")
       return
 
     try:
-      currentSceneData = self.logic.nextPair
-      volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[1])
+      volumeName = self.logic.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
       inputVolume = self._parameterNode.GetNodeReference(volumeName)
       if inputVolume is not None:
         self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
@@ -523,6 +566,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
+
+    self.updateParameterNodeFromGUI()
 
   def onRightSliderChanged(self, value):
     """
@@ -536,14 +581,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.ui.linkThresholdsButton.checked == True and self.ui.leftThresholdSlider.value != value:
       self.ui.leftThresholdSlider.value = value
 
-
-    if (self.logic.nextPair is None) or (self.logic.nextPair == False):
+    nextPair = self.logic.nextPair
+    if (nextPair is None) or (nextPair == False):
       logging.info("Not updating volume rendering, because volumes are not displayed yet")
       return
 
     try:
-      currentSceneData = self.logic.nextPair
-      volumeName = self.logic.nameFromPatientSequenceAndModel(currentSceneData[0], currentSceneData[2])
+      volumeName = self.logic.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
       inputVolume = self._parameterNode.GetNodeReference(volumeName)
       if inputVolume is not None:
         self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
@@ -553,6 +597,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       slicer.util.errorDisplay("Failed to threshold the selected volume(s): "+str(e))
       import traceback
       traceback.print_exc()
+
+    self.updateParameterNodeFromGUI()
 
   def getThresholdPercentage(self, value):
     """
@@ -570,6 +616,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     Callback function for link button.
     :returns: None
     """
+    self.logic.setParameter(self.logic.LINK_OPACITIES, toggled)
+
     if toggled:
       self.ui.rightThresholdSlider.value = self.ui.leftThresholdSlider.value
 
@@ -621,11 +669,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
         self.logic.setSurveyHistory(comparisonHistoryPath)
-        self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
+        self.ui.totalComparisonLabel.text = str(self.logic.getTotalComparisonCount())
         self.logic.setEloHistoryTable(eloHistoryPath)
         self.logic.setSurveyTable(csvPath)
 
-        self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
+        self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
         self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
         self.ui.inputsCollapsibleButton.collapsed = True
@@ -654,17 +702,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     Change pair of images being evaluated.
     """
     self.logic.sessionComparisonCount += 1
-    self.logic.totalComparisonCount += 1
-    self.ui.totalComparisonLabel.text = str(self.logic.totalComparisonCount)
-    self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
+
     self.logic.addRecordInTable(score)
+    totalComparisonCount = self.logic.getTotalComparisonCount()
+    self.ui.totalComparisonLabel.text = str(totalComparisonCount)
+    self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
 
     self.logic.hideCurrentVolumes()  # Hide current pair before selecting new pair
 
     self.logic.nextPair = self.logic.getPairFromSurveyTable()
 
     if not self.logic.nextPair:
-      self.logic.getNextPair(self.ui.csvPathSelector.currentPath == "")
+      self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
 
     self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
@@ -692,10 +741,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     try:
       if confirmation:
         # Save history as csv
-        surveyTable = self._parameterNode.GetNodeReference(self.logic.RESULTS_TABLE_NAME)
-        if (surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.LEFT_MODEL_COL) == "" and
-            surveyTable.GetCellText(self.logic.totalComparisonCount, self.logic.RIGHT_MODEL_COL) == ""):
-          surveyTable.RemoveRow(self.logic.totalComparisonCount)
+        surveyTable = self._parameterNode.GetNodeReference(self.logic.SURVEY_RESULTS_TABLE)
+        if (surveyTable.GetCellText(self.logic.getTotalComparisonCount(), self.logic.LEFT_MODEL_COL) == "" and
+            surveyTable.GetCellText(self.logic.getTotalComparisonCount(), self.logic.RIGHT_MODEL_COL) == ""):
+          surveyTable.RemoveRow(self.logic.getTotalComparisonCount())
         comparisonHistoryFilename = self.ui.outputDirectorySelector.directory + "/comparison_history_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
         slicer.util.saveNode(surveyTable, comparisonHistoryFilename)
         # Elo history
@@ -728,13 +777,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   LEFT_MODEL_COL = 2
   RIGHT_MODEL_COL = 4
-  RESULTS_TABLE_NAME = "SurveyResultsTable"
   DEFAULT_ELO = 1000
   K = 32
   EXP_SCALING_FACTOR = 0.01
   DF_COLUMN_NAMES = ["ModelName", "Elo", "GamesPlayed", "TimeLastPlayed"]
-  ELO_HISTORY_TABLE = "EloHistoryTable"
-
 
   WINDOW = 50
   IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
@@ -749,6 +795,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   LEFT_OPACITY_THRESHOLD = "LeftOpacityThreshold"  # range 0..1
   RIGHT_OPACITY_THRESHOLD = "RightOpacityThreshold"  # range 0..1
   LINK_OPACITIES = "LinkOpacities"
+  SURVEY_RESULTS_TABLE = "SurveyResultsTable"
+  ELO_HISTORY_TABLE = "EloHistoryTable"
+  SCANS_AND_MODELS_DICT = "ScansAndModelsDict"  # dict[modelName][scanName] = N serialized with json. N = number of games played.
 
 
   def __init__(self):
@@ -757,15 +806,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
 
-    self.scansAndModelsDict = {}
     self.surveyDF = None
     self.surveyStarted = False
     self.surveyFinished = False
     self.nextPair = None             # will be used as list[volumeName, AiModelName1, AiModelName2]
     self.previousPair = None
     self.sessionComparisonCount = 0  # How many comparisons have happened in this Slicer session
-    self.totalComparisonCount = 0
-    self.surveyTable = None
 
   def setDefaultParameters(self, parameterNode):
     """
@@ -781,21 +827,26 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       parameterNode.SetParameter(self.LINK_OPACITIES, "True")
 
   def setSurveyHistory(self, comparisonHistoryPath):
+    """
+    Makes sure survey results table exists. If a previously saved file is specified, the table contents will be read from that
+    file. Otherwise a new blank table will be created.
+    :param comparisonHistoryPath: full path and file name for previously saved data, or leave blank
+    :returns: None
+    """
     parameterNode = self.getParameterNode()
-    if comparisonHistoryPath:
-      # Load corresponding comparison history csv
-      self.surveyTable = slicer.util.loadTable(comparisonHistoryPath)
-      self.surveyTable.SetName(self.RESULTS_TABLE_NAME)
-      parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, self.surveyTable.GetID())
-      self.totalComparisonCount = self.surveyTable.GetNumberOfRows()
 
-    else:
-      # Reset survey table used to store survey results
-      self.surveyTable = parameterNode.GetNodeReference(self.RESULTS_TABLE_NAME)
-      if self.surveyTable:
-        slicer.mrmlScene.RemoveNode(self.surveyTable)
+    if parameterNode.GetNodeReference(self.SURVEY_RESULTS_TABLE) is not None:
+      oldResultsTable = parameterNode.GetNodeReference(self.SURVEY_RESULTS_TABLE)
+      slicer.mrmlScene.RemoveNode(oldResultsTable)
 
-      self.surveyTable = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', self.RESULTS_TABLE_NAME)
+    if comparisonHistoryPath:  # Load corresponding comparison history csv
+      surveyTable = slicer.util.loadTable(comparisonHistoryPath)
+      surveyTable.SetName(self.SURVEY_RESULTS_TABLE)
+      parameterNode.SetNodeReferenceID(self.SURVEY_RESULTS_TABLE, surveyTable.GetID())
+
+    else:  # Reset survey table used to store survey results
+      surveyTable = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', self.SURVEY_RESULTS_TABLE)
+      parameterNode.SetNodeReferenceID(self.SURVEY_RESULTS_TABLE, surveyTable.GetID())
 
       # Prepare data types for table columns
       indexCol = vtk.vtkIntArray()
@@ -810,17 +861,24 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       score2Col.SetName("Score_R")
 
       # Populate table with columns
-      self.surveyTable.AddColumn(indexCol)
-      self.surveyTable.AddColumn(model1Col)
-      self.surveyTable.AddColumn(score1Col)
-      self.surveyTable.AddColumn(model2Col)
-      self.surveyTable.AddColumn(score2Col)
-      parameterNode.SetNodeReferenceID(self.RESULTS_TABLE_NAME, self.surveyTable.GetID())
+      surveyTable.AddColumn(indexCol)
+      surveyTable.AddColumn(model1Col)
+      surveyTable.AddColumn(score1Col)
+      surveyTable.AddColumn(model2Col)
+      surveyTable.AddColumn(score2Col)
 
-      self.totalComparisonCount = 0
-
-  def setEloHistoryTable(self, eloHistoryPath):
+  def setEloHistoryTable(self, eloHistoryPath=None):
+    """
+    Removes existing Elo history table, creates a new one, and optionally populates it from file
+    :param eloHistoryPath: full path to a previously saved Elo history table
+    :returns: None
+    """
     parameterNode = self.getParameterNode()
+
+    currentEloHistoryTable = parameterNode.GetNodeReference(self.ELO_HISTORY_TABLE)
+    if currentEloHistoryTable:
+      slicer.mrmlScene.RemoveNode(currentEloHistoryTable)
+
     if eloHistoryPath:
       eloHistoryTable = slicer.util.loadTable(eloHistoryPath)
       eloHistoryTable.SetName(self.ELO_HISTORY_TABLE)
@@ -838,13 +896,15 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       indexCol.SetName("Comparison")
       eloHistoryTable.AddColumn(indexCol)
 
-      modelNames = self.scansAndModelsDict.keys()
+      scansAndModelsDict = self.getScansAndModelsDict()
+      modelNames = scansAndModelsDict.keys()
       for modelName in modelNames:
         eloCol = vtk.vtkDoubleArray()
         eloCol.SetName(modelName)
         eloHistoryTable.AddColumn(eloCol)
 
   def setSurveyTable(self, csvPath):
+    scansAndModelsDict = self.getScansAndModelsDict()
     if csvPath:
       self.surveyDF = pd.read_csv(csvPath)
 
@@ -861,7 +921,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         raise Exception(f"CSV file is missing columns: {missingCols}.")
 
       # Make sure model names match
-      modelNames = self.scansAndModelsDict.keys()
+
+      modelNames = scansAndModelsDict.keys()
       csvModelNames = self.surveyDF["ModelName"].unique()
       if not (set(modelNames) == set(csvModelNames)):
         raise Exception("Model names in CSV do not match loaded volumes.")
@@ -881,7 +942,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     else:
       # Create new dataframe with each row being one model
       data = {
-        "ModelName": self.scansAndModelsDict.keys(),
+        "ModelName": scansAndModelsDict.keys(),
         "Elo": self.DEFAULT_ELO,
         "GamesPlayed": 0,
         "TimeLastPlayed": None
@@ -967,7 +1028,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     # Load found volumes and create dictionary with their data
     parameterNode = self.getParameterNode()
-    self.scansAndModelsDict = {}
+    scansAndModelsDict = {}
     try:
       for volumeIndex, volumeFile in enumerate(volumesInDirectory):
         name = str(volumeFile)
@@ -979,15 +1040,37 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         patiendId, modelName, sequenceName = name.split('_')
         scanName = patiendId + "_" + sequenceName
 
-        if modelName in self.scansAndModelsDict:
-          self.scansAndModelsDict[modelName][scanName] = 0
+        if modelName in scansAndModelsDict:
+          scansAndModelsDict[modelName][scanName] = 0
         else:
-          self.scansAndModelsDict[modelName] = {scanName: 0}
+          scansAndModelsDict[modelName] = {scanName: 0}
+
+      self.setScansAndModelsDict(scansAndModelsDict)
     except Exception as e:
       slicer.util.errorDisplay("Ensure volumes follow the naming convention: "
                                "[patient_id]_[AI_model_name]_[sequence_name].nrrd: "+str(e))
       import traceback
       traceback.print_exc()
+
+  def setScansAndModelsDict(self, scansAndModelsDict):
+    """
+    Save the contents of a dict in the parameter node in string format.
+    :param scansAndModelsDict: dict
+    :returns: None
+    """
+    parameterNode = self.getParameterNode()
+    s = json.dumps(scansAndModelsDict)
+    parameterNode.SetParameter(self.SCANS_AND_MODELS_DICT, s)
+
+  def getScansAndModelsDict(self):
+    """
+    Returns the dict representation of scans and models dict. Changing the dict will not update the parameter node.
+    If you edit the contents of the dict, use setScansAndModelsDict to save the changes.
+    :returns dict: scansAndModelsDict
+    """
+    parameterNode = self.getParameterNode()
+    d = json.loads(parameterNode.GetParameter(self.SCANS_AND_MODELS_DICT))
+    return d
 
   def calculateExpectedScores(self, leftElo, rightElo):
     leftExpected = 1 / (1 + 10 ** ((rightElo - leftElo) / 400))
@@ -1007,8 +1090,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     return (diff - rmin) / (rmax - rmin) * (tmax - tmin) + tmin
 
   def calculateActualScores(self):
-    leftRating = int(self.surveyTable.GetCellText(self.sessionComparisonCount - 1, self.LEFT_MODEL_COL))
-    rightRating = int(self.surveyTable.GetCellText(self.sessionComparisonCount - 1, self.RIGHT_MODEL_COL))
+    surveyTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
+    leftRating = int(surveyTable.GetCellText(self.sessionComparisonCount - 1, self.LEFT_MODEL_COL))
+    rightRating = int(surveyTable.GetCellText(self.sessionComparisonCount - 1, self.RIGHT_MODEL_COL))
     leftActual = self.calculateScaledScore(leftRating - rightRating)
     rightActual = self.calculateScaledScore(rightRating - leftRating)
     return leftActual, rightActual
@@ -1036,13 +1120,18 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     self.surveyDF.at[rightModelIdx, "Elo"] = rightNewElo
 
     # Increment games played for each model/scan and update last time played
+
+    scansAndModelsDict = self.getScansAndModelsDict()
+
     scan = self.nextPair[0]
     for i in range(1, len(self.nextPair)):
       model = self.nextPair[i]
       modelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == model][0]
       self.surveyDF.at[modelIdx, "GamesPlayed"] += 1
       self.surveyDF.at[modelIdx, "TimeLastPlayed"] = datetime.datetime.now()
-      self.scansAndModelsDict[model][scan] += 1
+      scansAndModelsDict[model][scan] += 1
+
+    self.setScansAndModelsDict(scansAndModelsDict)
 
     # Add a row to the elo history table
 
@@ -1051,16 +1140,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     eloHistoryTable.AddEmptyRow()
     rowIdx = eloHistoryTable.GetNumberOfRows() - 1
-    eloHistoryTable.SetCellText(rowIdx, 0, str(self.totalComparisonCount))
+    eloHistoryTable.SetCellText(rowIdx, 0, str(self.getTotalComparisonCount()))
 
-    modelNames = self.scansAndModelsDict.keys()
+    modelNames = scansAndModelsDict.keys()
     i = 0
     for modelName in modelNames:
       i += 1
       modelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == modelName][0]
       eloHistoryTable.SetCellText(rowIdx, i, str(self.surveyDF.at[modelIdx, "Elo"]))
 
-  def getNextPair(self, isNewCsv):
+  def updateNextPair(self, isNewCsv):
     # Randomly choose first matchup
     if self.sessionComparisonCount == 0 and isNewCsv:
       models = self.surveyDF["ModelName"].tolist()
@@ -1098,8 +1187,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     # Choose scan with least number of games
     minDictList = []
+    scansAndModelsDict = self.getScansAndModelsDict()
     for model in nextModelPair:
-      modelScans = self.scansAndModelsDict[model].items()
+      modelScans = scansAndModelsDict[model].items()
       # workaround to issue of scan getting picked when not the least played
       minDictList.append(min(random.sample(modelScans, len(modelScans)), key=lambda x: x[1]))
     minScan = min(minDictList, key=lambda x: x[1])[0]
@@ -1108,6 +1198,23 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if self.sessionComparisonCount != 0:
       self.previousPair = self.nextPair
     self.nextPair = nextModelPair
+
+  def setParameter(self, parameterName, value):
+    """
+    Converts parameter values to string and saves them to the parameter node.
+    :param parameterName: name (string)
+    :param value: value (in original type)
+    :returns: None
+    """
+    parameterNode = self.getParameterNode()
+
+    if parameterName == self.LINK_OPACITIES:
+      if value:
+        parameterNode.SetParameter(self.LINK_OPACITIES, "True")
+      else:
+        parameterNode.SetParameter(self.LINK_OPACITIES, "False")
+    else:
+      parameterNode.SetParameter(parameterName, str(value))
 
   def getParameter(self, parameterName):
     """
@@ -1138,9 +1245,22 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         probs.append(math.exp(-self.EXP_SCALING_FACTOR * eloDiff))
     return probs
 
+  def getTotalComparisonCount(self):
+    """
+    Returns the total number of rows in the survey results table.
+    :returns: number of comparisons
+    """
+    resultsTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
+    if resultsTable is not None:
+      return resultsTable.GetNumberOfRows()
+    else:
+      return 0
+
   def getPairFromSurveyTable(self):
-    leftScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.LEFT_MODEL_COL - 1)
-    rightScanName = self.surveyTable.GetCellText(self.totalComparisonCount, self.RIGHT_MODEL_COL - 1)
+    surveyTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
+    totalComparisonCount = surveyTable.GetNumberOfRows()
+    leftScanName = surveyTable.GetCellText(totalComparisonCount, self.LEFT_MODEL_COL - 1)
+    rightScanName = surveyTable.GetCellText(totalComparisonCount, self.RIGHT_MODEL_COL - 1)
     if leftScanName == "" and rightScanName == "":
       return
     leftModelName = leftScanName.split("_")[1]
@@ -1164,7 +1284,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     cameraNode = camerasLogic.GetViewActiveCameraNode(viewNode)
     camera = cameraNode.GetCamera()
 
-    #todo: We should probably use parallel projection and actual FOV. Now FOV is just camera-focus distance.
     fov = slicer.util.settingsValue(self.CAMERA_FOV_SETTING, self.CAMERA_FOV_DEFAULT, converter=int)
 
     camera.SetFocalPoint(volumeCenter_Ras)
@@ -1262,7 +1381,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     # Prevent errors from previous or next buttons when the volumes haven't been loaded in yet
 
-    if not self.scansAndModelsDict:
+    scansAndModelsDict = self.getScansAndModelsDict()
+    if not scansAndModelsDict:
       logging.warning("Volumes not loaded yet")
       return
 
@@ -1327,15 +1447,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     slicer.app.setRenderPaused(False)
 
   def addRecordInTable(self, leftScore):
-    self.surveyTable.AddEmptyRow()
-    rowIdx = self.surveyTable.GetNumberOfRows() - 1
+    surveyTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
+    surveyTable.AddEmptyRow()
+    rowIdx = surveyTable.GetNumberOfRows() - 1
     namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
                              self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
-    self.surveyTable.SetCellText(rowIdx, 0, str(rowIdx + 1))
-    self.surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
-    self.surveyTable.SetCellText(rowIdx, 2, str(leftScore))
-    self.surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
-    self.surveyTable.SetCellText(rowIdx, 4, str(1.0-leftScore))
+    surveyTable.SetCellText(rowIdx, 0, str(rowIdx + 1))
+    surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
+    surveyTable.SetCellText(rowIdx, 2, str(leftScore))
+    surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
+    surveyTable.SetCellText(rowIdx, 4, str(1.0-leftScore))
 
   def setVolumeOpacityThreshold(self, inputVolume, imageThresholdPercent):
     """
