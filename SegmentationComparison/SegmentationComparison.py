@@ -550,8 +550,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.ui.linkThresholdsButton.checked == True and self.ui.rightThresholdSlider.value != value:
       self.ui.rightThresholdSlider.value = value
 
-    nextPair = self.logic.nextPair
-    if (nextPair is None) or (nextPair == False):
+    nextPair = self.logic.getNextPair()
+    if nextPair is None:
       logging.info("Not updating volume rendering, because volumes are not displayed yet")
       return
 
@@ -581,8 +581,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     if self.ui.linkThresholdsButton.checked == True and self.ui.leftThresholdSlider.value != value:
       self.ui.leftThresholdSlider.value = value
 
-    nextPair = self.logic.nextPair
-    if (nextPair is None) or (nextPair == False):
+    nextPair = self.logic.getNextPair()
+    if nextPair is None:
       logging.info("Not updating volume rendering, because volumes are not displayed yet")
       return
 
@@ -654,8 +654,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.logic.sessionComparisonCount = 0
         self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
 
-        if self.logic.surveyStarted:
-          self.logic.surveyStarted = False
+        self.logic.surveyStarted = True
 
         csvPath = self.ui.csvPathSelector.currentPath
         comparisonHistoryPath = None
@@ -671,7 +670,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.logic.setSurveyHistory(comparisonHistoryPath)
         self.ui.totalComparisonLabel.text = str(self.logic.getTotalComparisonCount())
         self.logic.setEloHistoryTable(eloHistoryPath)
-        self.logic.setSurveyTable(csvPath)
+        self.logic.loadSurveyTable(csvPath)
 
         self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
         self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
@@ -701,6 +700,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     Change pair of images being evaluated.
     """
+    self.logic.surveyStarted = True
     self.logic.sessionComparisonCount += 1
 
     self.logic.addRecordInTable(score)
@@ -710,9 +710,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.logic.hideCurrentVolumes()  # Hide current pair before selecting new pair
 
-    self.logic.nextPair = self.logic.getPairFromSurveyTable()
+    self.logic.setNextPair(self.logic.getPairFromSurveyTable())
 
-    if not self.logic.nextPair:
+    if not self.logic.getNextPair():
       self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
 
     self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
@@ -754,9 +754,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
         # Save pandas dataframe to csv
         resultsSavePath = self.ui.outputDirectorySelector.directory + "/elo_scores_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
-        self.logic.surveyDF.to_csv(resultsSavePath, index=False)
+        self.logic.getSurveyTable().to_csv(resultsSavePath, index=False)
 
         slicer.util.infoDisplay(f"Results successfully saved to: {resultsSavePath}")
+        self.logic.surveyStarted = False
     except Exception as e:
       slicer.util.errorDisplay(f"Results could not be saved: {str(e)}")
 
@@ -798,6 +799,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   SURVEY_RESULTS_TABLE = "SurveyResultsTable"
   ELO_HISTORY_TABLE = "EloHistoryTable"
   SCANS_AND_MODELS_DICT = "ScansAndModelsDict"  # dict[modelName][scanName] = N serialized with json. N = number of games played.
+  SURVEY_DATAFRAME = "SurveyDataFrame"
+  NEXT_PAIR = "NextPair"  # list[volumeName, AiModelName1, AiModelName2]
 
 
   def __init__(self):
@@ -806,11 +809,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     ScriptedLoadableModuleLogic.__init__(self)
 
-    self.surveyDF = None
     self.surveyStarted = False
     self.surveyFinished = False
-    self.nextPair = None             # will be used as list[volumeName, AiModelName1, AiModelName2]
-    self.previousPair = None
     self.sessionComparisonCount = 0  # How many comparisons have happened in this Slicer session
 
   def setDefaultParameters(self, parameterNode):
@@ -903,19 +903,19 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         eloCol.SetName(modelName)
         eloHistoryTable.AddColumn(eloCol)
 
-  def setSurveyTable(self, csvPath):
+  def loadSurveyTable(self, csvPath):
     scansAndModelsDict = self.getScansAndModelsDict()
     if csvPath:
-      self.surveyDF = pd.read_csv(csvPath)
+      surveyDF = pd.read_csv(csvPath)
 
       # Catch errors in csv format or content
-      if self.surveyDF.empty:
+      if surveyDF.empty:
         raise Exception("CSV file is empty!")
 
       # Make sure required columns are in csv
       missingCols = []
       for col in self.DF_COLUMN_NAMES:
-        if col not in self.surveyDF.columns.values:
+        if col not in surveyDF.columns.values:
           missingCols.append(col)
       if missingCols:
         raise Exception(f"CSV file is missing columns: {missingCols}.")
@@ -923,12 +923,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       # Make sure model names match
 
       modelNames = scansAndModelsDict.keys()
-      csvModelNames = self.surveyDF["ModelName"].unique()
+      csvModelNames = surveyDF["ModelName"].unique()
       if not (set(modelNames) == set(csvModelNames)):
         raise Exception("Model names in CSV do not match loaded volumes.")
 
       # Check for missing values in elo and games played columns
-      nanCols = self.surveyDF.columns[self.surveyDF.isnull().any()].tolist()
+      nanCols = surveyDF.columns[surveyDF.isnull().any()].tolist()
       nanColNames = []
       for i in range(1, len(self.DF_COLUMN_NAMES) - 1):  # there is probably a better solution
         column = self.DF_COLUMN_NAMES[i]
@@ -937,7 +937,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       if nanColNames:
         raise Exception(f"CSV file contains missing values in columns: {nanColNames}.")
 
-      self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
+      surveyDF["TimeLastPlayed"] = pd.to_datetime(surveyDF["TimeLastPlayed"])
 
     else:
       # Create new dataframe with each row being one model
@@ -947,8 +947,29 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         "GamesPlayed": 0,
         "TimeLastPlayed": None
       }
-      self.surveyDF = pd.DataFrame(data)
-      self.surveyDF["TimeLastPlayed"] = pd.to_datetime(self.surveyDF["TimeLastPlayed"])
+      surveyDF = pd.DataFrame(data)
+      surveyDF["TimeLastPlayed"] = pd.to_datetime(surveyDF["TimeLastPlayed"])
+
+    # Save dataframe to parameter node
+    self.setSurveyTable(surveyDF)
+
+  def setSurveyTable(self, surveyDF):
+    """Save the contents of a dataframe in the parameter node in string format.
+    :param surveyDF: pandas dataframe
+    :return: None
+    """
+    parameterNode = self.getParameterNode()
+    dataStr = surveyDF.to_json(date_format="iso")
+    parameterNode.SetParameter(self.SURVEY_DATAFRAME, dataStr)
+
+  def getSurveyTable(self):
+    """Returns the dataframe representation of the survey dataframe.
+    :return: pandas dataframe
+    """
+    parameterNode = self.getParameterNode()
+    surveyDF = pd.read_json(parameterNode.GetParameter(self.SURVEY_DATAFRAME))
+    surveyDF["TimeLastPlayed"] = pd.to_datetime(surveyDF["TimeLastPlayed"]).dt.tz_localize(None)
+    return surveyDF
 
   def resourcePath(self, filename):
     moduleDir = os.path.dirname(slicer.util.modulePath(self.moduleName))
@@ -1105,33 +1126,35 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       logging.error("Score cannot be outside 0.0 and 1.0!")
 
     # Update elo scores
-    leftModel = self.nextPair[1]
-    rightModel = self.nextPair[2]
-    leftElo = self.surveyDF.query(f"ModelName == '{leftModel}'").iloc[0]["Elo"]
-    rightElo = self.surveyDF.query(f"ModelName == '{rightModel}'").iloc[0]["Elo"]
+    nextPair = self.getNextPair()
+    surveyDF = self.getSurveyTable()
+    leftModel = nextPair[1]
+    rightModel = nextPair[2]
+    leftElo = surveyDF.query(f"ModelName == '{leftModel}'").iloc[0]["Elo"]
+    rightElo = surveyDF.query(f"ModelName == '{rightModel}'").iloc[0]["Elo"]
     leftExpected, rightExpected = self.calculateExpectedScores(leftElo, rightElo)
     leftActual = leftScore
     rightActual = 1.0 - leftScore
     leftNewElo = self.calculateNewElo(leftElo, leftActual, leftExpected)
     rightNewElo = self.calculateNewElo(rightElo, rightActual, rightExpected)
-    leftModelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == leftModel][0]
-    rightModelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == rightModel][0]
-    self.surveyDF.at[leftModelIdx, "Elo"] = leftNewElo
-    self.surveyDF.at[rightModelIdx, "Elo"] = rightNewElo
+    leftModelIdx = surveyDF.index[surveyDF["ModelName"] == leftModel][0]
+    rightModelIdx = surveyDF.index[surveyDF["ModelName"] == rightModel][0]
+    surveyDF.at[leftModelIdx, "Elo"] = leftNewElo
+    surveyDF.at[rightModelIdx, "Elo"] = rightNewElo
 
     # Increment games played for each model/scan and update last time played
-
     scansAndModelsDict = self.getScansAndModelsDict()
 
-    scan = self.nextPair[0]
-    for i in range(1, len(self.nextPair)):
-      model = self.nextPair[i]
-      modelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == model][0]
-      self.surveyDF.at[modelIdx, "GamesPlayed"] += 1
-      self.surveyDF.at[modelIdx, "TimeLastPlayed"] = datetime.datetime.now()
+    scan = nextPair[0]
+    for i in range(1, len(nextPair)):
+      model = nextPair[i]
+      modelIdx = surveyDF.index[surveyDF["ModelName"] == model][0]
+      surveyDF.at[modelIdx, "GamesPlayed"] += 1
+      surveyDF.at[modelIdx, "TimeLastPlayed"] = datetime.datetime.now()
       scansAndModelsDict[model][scan] += 1
 
     self.setScansAndModelsDict(scansAndModelsDict)
+    self.setSurveyTable(surveyDF)
 
     # Add a row to the elo history table
 
@@ -1146,43 +1169,45 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     i = 0
     for modelName in modelNames:
       i += 1
-      modelIdx = self.surveyDF.index[self.surveyDF["ModelName"] == modelName][0]
-      eloHistoryTable.SetCellText(rowIdx, i, str(self.surveyDF.at[modelIdx, "Elo"]))
+      modelIdx = surveyDF.index[surveyDF["ModelName"] == modelName][0]
+      eloHistoryTable.SetCellText(rowIdx, i, str(surveyDF.at[modelIdx, "Elo"]))
 
   def updateNextPair(self, isNewCsv):
+    surveyDF = self.getSurveyTable()
+
     # Randomly choose first matchup
     if self.sessionComparisonCount == 0 and isNewCsv:
-      models = self.surveyDF["ModelName"].tolist()
+      models = surveyDF["ModelName"].tolist()
       nextModelPair = random.sample(models, 2)
 
     else:
       nextModelPair = []
       # Get list of models with minimum games played
-      minGamesIndexes = self.surveyDF.index[self.surveyDF["GamesPlayed"] == self.surveyDF["GamesPlayed"].min()].tolist()
+      minGamesIndexes = surveyDF.index[surveyDF["GamesPlayed"] == surveyDF["GamesPlayed"].min()].tolist()
 
       if len(minGamesIndexes) == 1:
         # No ties
-        leastModel = self.surveyDF.iloc[minGamesIndexes[0]]["ModelName"]
+        leastModel = surveyDF.iloc[minGamesIndexes[0]]["ModelName"]
         nextModelPair.append(leastModel)
       else:
         # Pick first model with least recent date played
-        minGamesDF = self.surveyDF.iloc[minGamesIndexes]
-        leastModel = self.surveyDF.query(f"TimeLastPlayed == '{minGamesDF['TimeLastPlayed'].min()}'").iloc[0]["ModelName"]
+        minGamesDF = surveyDF.iloc[minGamesIndexes]
+        leastModel = surveyDF.query(f"TimeLastPlayed == '{minGamesDF['TimeLastPlayed'].min()}'").iloc[0]["ModelName"]
         nextModelPair.append(leastModel)
 
       # Sample list of models with probability based on elo difference
-      leastModelElo = self.surveyDF.query(f"ModelName == '{leastModel}'").iloc[0]["Elo"]
-      eloDiffList = (self.surveyDF["Elo"] - leastModelElo).abs().tolist()
+      leastModelElo = surveyDF.query(f"ModelName == '{leastModel}'").iloc[0]["Elo"]
+      eloDiffList = (surveyDF["Elo"] - leastModelElo).abs().tolist()
       if all(eloDiff == 0 for eloDiff in eloDiffList):
         validModel = False
         while not validModel:
           chosenModelIdx = rng.integers(0, len(eloDiffList))
-          if self.surveyDF.iloc[chosenModelIdx]["ModelName"] != leastModel:
+          if surveyDF.iloc[chosenModelIdx]["ModelName"] != leastModel:
             validModel = True
       else:
         samplingWeights = self.getModelSamplingProbability(eloDiffList)
         chosenModelIdx = random.choices(list(enumerate(eloDiffList)), weights=samplingWeights)[0][0]
-      closestEloModel = self.surveyDF.iloc[chosenModelIdx]["ModelName"]
+      closestEloModel = surveyDF.iloc[chosenModelIdx]["ModelName"]
       nextModelPair.append(closestEloModel)
 
     # Choose scan with least number of games
@@ -1194,10 +1219,27 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       minDictList.append(min(random.sample(modelScans, len(modelScans)), key=lambda x: x[1]))
     minScan = min(minDictList, key=lambda x: x[1])[0]
     nextModelPair.insert(0, minScan)
-    # Remember previous pair
-    if self.sessionComparisonCount != 0:
-      self.previousPair = self.nextPair
-    self.nextPair = nextModelPair
+    self.setNextPair(nextModelPair)
+
+  def setNextPair(self, nextPair):
+    """Save the contents of a list in the parameter node in string format.
+    :param nextPair: list (format: list[volumeName, AiModelName1, AiModelName2])
+    :returns: None
+    """
+    parameterNode = self.getParameterNode()
+    pairStr = json.dumps(nextPair)
+    parameterNode.SetParameter(self.NEXT_PAIR, pairStr)
+
+  def getNextPair(self):
+    """Returns the list representation of the next matchup, if it exists.
+    :return: list if the matchup exists, else None
+    """
+    # TODO: is it better to catch a non-existing list here or where this method is called?
+    nextPairStr = self.getParameterNode().GetParameter(self.NEXT_PAIR)
+    if nextPairStr == "":
+      return
+    nextPair = json.loads(nextPairStr)
+    return nextPair
 
   def setParameter(self, parameterName, value):
     """
@@ -1357,15 +1399,16 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     :returns: None
     """
     parameterNode = self.getParameterNode()
+    nextPair = self.getNextPair()
 
     volumeRenderingLogic = slicer.modules.volumerendering.logic()
 
-    volumeName1 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1])
+    volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
     volumeNode1 = parameterNode.GetNodeReference(volumeName1)
     displayNode1 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode1)
     displayNode1.SetVisibility(False)
 
-    volumeName2 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])
+    volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
     volumeNode2 = parameterNode.GetNodeReference(volumeName2)
     displayNode2 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode2)
     displayNode2.SetVisibility(False)
@@ -1385,12 +1428,13 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not scansAndModelsDict:
       logging.warning("Volumes not loaded yet")
       return
+    nextPair = self.getNextPair()
 
     slicer.app.setRenderPaused(True)
 
     # Set up left side view
 
-    volumeName1 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1])
+    volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
     volumeNode1 = parameterNode.GetNodeReference(volumeName1)
     viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
     viewNode1.LinkedControlOn()
@@ -1401,7 +1445,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     # Set up right side view
 
-    volumeName2 = self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])
+    volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
     volumeNode2 = parameterNode.GetNodeReference(volumeName2)
     viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
     viewNode2.LinkedControlOn()
@@ -1447,11 +1491,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     slicer.app.setRenderPaused(False)
 
   def addRecordInTable(self, leftScore):
+    nextPair = self.getNextPair()
     surveyTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
     surveyTable.AddEmptyRow()
     rowIdx = surveyTable.GetNumberOfRows() - 1
-    namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[1]),
-                             self.nameFromPatientSequenceAndModel(self.nextPair[0], self.nextPair[2])]
+    namesVolumesToDisplay = [self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1]),
+                             self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])]
     surveyTable.SetCellText(rowIdx, 0, str(rowIdx + 1))
     surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
     surveyTable.SetCellText(rowIdx, 2, str(leftScore))
