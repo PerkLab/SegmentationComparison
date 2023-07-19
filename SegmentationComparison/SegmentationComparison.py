@@ -135,6 +135,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   ICON_SIZE = 54
 
   LAYOUT_DUAL_3D = 876
+  LAYOUT_DUAL_MULTIPLE_2D = 877
 
   THRESHOLD_SLIDER_RESOLUTION = 300  # Must be positive integer
 
@@ -233,6 +234,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Set up button connections and icons
 
+    self.ui.inputTypeButtonGroup.connect("buttonClicked(QAbstractButton*)", self.onInputTypeChanged)
     self.ui.csvPathSelector.connect("currentPathChanged(const QString)", self.onCSVPathChanged)
     self.ui.clearCSVPathButton.connect("clicked()", self.onClearButtonPressed)
     self.ui.inputDirectorySelector.connect("directoryChanged(const QString)", self.onInputVolumeDirectorySelected)
@@ -317,7 +319,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       layoutLogic.GetLayoutNode().AddLayoutDescription(self.LAYOUT_DUAL_3D, dual3dLayout)
 
     # Add custom layout to standard layout selector menu
-
     mainWindow = slicer.util.mainWindow()
     viewToolBar = mainWindow.findChild('QToolBar', 'ViewToolBar')
     layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
@@ -327,6 +328,128 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     layoutSwitchAction.setData(self.LAYOUT_DUAL_3D)
     layoutSwitchAction.setIcon(qt.QIcon(':Icons/Go.png'))
     layoutSwitchAction.setToolTip('Dual 3D comparison')
+
+    # Dual layout with 6 2D slices in each
+    dual2dLayout = \
+      """
+      <layout type="horizontal">
+        <item>
+          <layout type="vertical">
+            <item>
+              <layout type="horizontal">
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="11">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">11</property>
+                    <property name="viewcolor" action="default">#F34A33</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="12">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">12</property>
+                    <property name="viewcolor" action="default">#F34A33</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="13">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">13</property>
+                    <property name="viewcolor" action="default">#F34A33</property>
+                  </view>
+                </item>
+              </layout>
+            </item>
+            <item>
+              <layout type="horizontal">
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="14">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">14</property>
+                    <property name="viewcolor" action="default">#F34A33</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="15">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">15</property>
+                    <property name="viewcolor" action="default">#F34A33</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="16">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">16</property>
+                    <property name="viewcolor" action="default">#F34A33</property>
+                  </view>
+                </item>
+              </layout>
+            </item>
+          </layout>
+        </item>
+        <item>
+          <layout type="vertical">
+            <item>
+              <layout type="horizontal">
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="21">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">21</property>
+                    <property name="viewcolor" action="default">#6EB14B</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="22">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">22</property>
+                    <property name="viewcolor" action="default">#6EB14B</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="23">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">23</property>
+                    <property name="viewcolor" action="default">#6EB14B</property>
+                  </view>
+                </item>
+              </layout>
+            </item>
+            <item>
+              <layout type="horizontal">
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="24">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">24</property>
+                    <property name="viewcolor" action="default">#6EB14B</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="25">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">25</property>
+                    <property name="viewcolor" action="default">#6EB14B</property>
+                  </view>
+                </item>
+                <item>
+                  <view class="vtkMRMLSliceNode" singletontag="26">
+                    <property name="orientation" action="default">Axial</property>
+                    <property name="viewlabel" action="default">26</property>
+                    <property name="viewcolor" action="default">#6EB14B</property>
+                  </view>
+                </item>
+              </layout>
+            </item>
+          </layout>
+        </item>
+      </layout>
+      """
+    if not layoutLogic.GetLayoutNode().SetLayoutDescription(self.LAYOUT_DUAL_MULTIPLE_2D, dual2dLayout):
+      layoutLogic.GetLayoutNode().AddLayoutDescription(self.LAYOUT_DUAL_MULTIPLE_2D, dual2dLayout)
+
+    layoutSwitchAction = layoutSwitchActionParent.addAction("2D segmentation comparison")
+    layoutSwitchAction.setData(self.LAYOUT_DUAL_MULTIPLE_2D)
+    layoutSwitchAction.setIcon(qt.QIcon(':Icons/Go.png'))
+    layoutSwitchAction.setToolTip('Dual 2D comparison')
 
   def onResetSettingsClicked(self):
     logging.info("onResetSettingsClicked()")
@@ -355,6 +478,22 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   def onComparisonCollapsed(self, collapsed):
     if collapsed == False:
       self.ui.inputsCollapsibleButton.collapsed = True
+
+  def onInputTypeChanged(self, button):
+    if button == self.ui.threeDRadioButton:
+      self._parameterNode.SetParameter(self.logic.INPUT_TYPE, "3D")
+
+      slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_3D)
+      viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+      viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
+      viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
+
+      viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+      viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
+      viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
+    else:
+      self._parameterNode.SetParameter(self.logic.INPUT_TYPE, "2D")
+      slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
 
   # set the output directory to the input directory as a default
   def onInputVolumeDirectorySelected(self, selectedPath):
@@ -392,7 +531,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     settings.setValue(self.LAST_OUTPUT_PATH_SETTING, selectedPath)
     self.updateParameterNodeFromGUI()
 
-
   def cleanup(self):
     """
     Called when the application closes and the module widget is destroyed.
@@ -407,15 +545,18 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.initializeParameterNode()
     slicer.util.setDataProbeVisible(False)  # We don't use data probe, and it takes valuable space from widget.
 
-    slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_3D)  # Setting this layout creates all views automatically
+    if self._parameterNode.GetParameter(self.logic.INPUT_TYPE) == "3D":
+      slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_3D)  # Setting this layout creates all views automatically
 
-    viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
-    viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
-    viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
+      viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+      viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
+      viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
 
-    viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
-    viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
-    viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
+      viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+      viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
+      viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
+    else:
+      slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
 
   def exit(self):
     """
@@ -654,6 +795,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
         # Reset the scene
         self.logic.resetScene()
+        # Set parameter back to 2D since clearing the scene resets it to default
+        if self.ui.twoDRadioButton.checked:
+          self._parameterNode.SetParameter(self.logic.INPUT_TYPE, "2D")
         # Reset comparison counter
         self.logic.sessionComparisonCount = 0
         self.ui.sessionComparisonLabel.text = str(self.logic.sessionComparisonCount)
@@ -670,7 +814,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
           comparisonHistoryPath = os.path.join(csvRoot, "comparison_history_" + timestamp)
           eloHistoryPath = os.path.join(csvRoot, "elo_history_" + timestamp)
 
-        self.logic.loadVolumes(self.ui.inputDirectorySelector.directory, self.ui.threeDRadioButton.checked)
+        self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
         self.logic.setSurveyHistory(comparisonHistoryPath)
         self.ui.totalComparisonLabel.text = str(self.logic.getTotalComparisonCount())
         self.logic.setEloHistoryTable(eloHistoryPath)
@@ -797,6 +941,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   # Module parameter names
 
+  INPUT_TYPE = "InputType"  # 2D or 3D
   LEFT_OPACITY_THRESHOLD = "LeftOpacityThreshold"  # range 0..1
   RIGHT_OPACITY_THRESHOLD = "RightOpacityThreshold"  # range 0..1
   LINK_OPACITIES = "LinkOpacities"
@@ -829,6 +974,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     if not parameterNode.GetParameter(self.LINK_OPACITIES):
       parameterNode.SetParameter(self.LINK_OPACITIES, "True")
+    
+    if not parameterNode.GetParameter(self.INPUT_TYPE):
+      parameterNode.SetParameter(self.INPUT_TYPE, "3D")
 
   def setSurveyHistory(self, comparisonHistoryPath):
     """
@@ -1039,13 +1187,14 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
             "the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, "
             "and Scene_x_Model_y_Transform.h5 for specific volumes")
 
-  def loadVolumes(self, directory, use3DInputs):
+  def loadVolumes(self, directory):
     # Load the volumes that will be compared.
     # Store a dictionary with patient_sequence names as keys and lists of AI models as elements.
     # For example, patient_sequence 405_axial was evaluated with the AI models UNet_1 and UNet_2.
 
     logging.info("Load button pressed, resetting the scene")
     parameterNode = self.getParameterNode()
+    inputType = parameterNode.GetParameter(self.INPUT_TYPE)
 
     # List nrrd volumes in indicated directory
     print("Checking directory: " + directory)
@@ -1067,7 +1216,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
           scansAndModelsDict[modelName] = {scanName: 0}
         
         # Load ultrasound sequence and predictions based on index file
-        if not use3DInputs:
+        if inputType == "2D":
           parentDir = os.path.abspath(os.path.join(volumeFile, os.pardir))
           with open(os.path.join(parentDir, f"{scanName}_indices.json")) as f:
             indices = json.load(f)["indices"]
