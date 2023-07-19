@@ -1,4 +1,5 @@
 import os
+import glob
 import unittest
 import json
 import logging
@@ -17,6 +18,12 @@ try:
 except:
   slicer.util.pip_install('pandas')
   import pandas as pd
+
+try:
+  import nrrd
+except:
+  slicer.util.pip_install('pynrrd')
+  import nrrd
 
 import math
 import time
@@ -137,6 +144,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     """
     ScriptedLoadableModuleWidget.__init__(self, parent)
     VTKObservationMixin.__init__(self)  # needed for parameter node observation
+    slicer.mymod = self  # for debugging in Slicer
     self.logic = None
     self._parameterNode = None
     self._updatingGUIFromParameterNode = False
@@ -215,10 +223,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     lastOutputPath = slicer.util.settingsValue(self.LAST_OUTPUT_PATH_SETTING, "")
     if lastOutputPath != "":
       self.ui.outputDirectorySelector.directory = lastOutputPath
-
-    # lastCSVPath = slicer.util.settingsValue(self.LAST_CSV_PATH_SETTING, "")
-    # if lastCSVPath != "":
-    #   self.ui.csvPathSelector.currentPath = lastCSVPath
 
     # Make some collapsible buttons exclusive
 
@@ -666,7 +670,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
           comparisonHistoryPath = os.path.join(csvRoot, "comparison_history_" + timestamp)
           eloHistoryPath = os.path.join(csvRoot, "elo_history_" + timestamp)
 
-        self.logic.loadVolumes(self.ui.inputDirectorySelector.directory)
+        self.logic.loadVolumes(self.ui.inputDirectorySelector.directory, self.ui.threeDRadioButton.checked)
         self.logic.setSurveyHistory(comparisonHistoryPath)
         self.ui.totalComparisonLabel.text = str(self.logic.getTotalComparisonCount())
         self.logic.setEloHistoryTable(eloHistoryPath)
@@ -1035,29 +1039,25 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
             "the volumes. Use this naming scheme: DefaultTransform.h5 to set the default transform, "
             "and Scene_x_Model_y_Transform.h5 for specific volumes")
 
-  def loadVolumes(self, directory):
+  def loadVolumes(self, directory, use3DInputs):
     # Load the volumes that will be compared.
     # Store a dictionary with patient_sequence names as keys and lists of AI models as elements.
     # For example, patient_sequence 405_axial was evaluated with the AI models UNet_1 and UNet_2.
 
     logging.info("Load button pressed, resetting the scene")
+    parameterNode = self.getParameterNode()
 
     # List nrrd volumes in indicated directory
     print("Checking directory: " + directory)
-    volumesInDirectory = list(f for f in os.listdir(directory) if f.endswith(".nrrd"))
-    print("Found volumes: " + str(volumesInDirectory))
+    volumesInDirectory = glob.glob(os.path.join(directory, "*_*_*.nrrd"))
 
-    # Load found volumes and create dictionary with their data
-    parameterNode = self.getParameterNode()
-    scansAndModelsDict = {}
-    try:
-      for volumeIndex, volumeFile in enumerate(volumesInDirectory):
-        name = str(volumeFile)
-        name = name.replace('.nrrd','') # remove file extension
-        loadedVolume = slicer.util.loadVolume(directory + "/" + volumeFile)
-        loadedVolume.SetName(name)
-        parameterNode.SetNodeReferenceID(name, loadedVolume.GetID())
+    if volumesInDirectory:
+      print("Found volumes: " + str(volumesInDirectory))
 
+      # Load found volumes and create dictionary with their data
+      scansAndModelsDict = {}
+      for volumeFile in volumesInDirectory:
+        name = os.path.splitext(os.path.basename(volumeFile))[0]  # remove file extension
         patiendId, modelName, sequenceName = name.split('_')
         scanName = patiendId + "_" + sequenceName
 
@@ -1065,13 +1065,45 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
           scansAndModelsDict[modelName][scanName] = 0
         else:
           scansAndModelsDict[modelName] = {scanName: 0}
+        
+        # Load ultrasound sequence and predictions based on index file
+        if not use3DInputs:
+          parentDir = os.path.abspath(os.path.join(volumeFile, os.pardir))
+          with open(os.path.join(parentDir, f"{scanName}_indices.json")) as f:
+            indices = json.load(f)["indices"]
+
+          # Load ultrasound frames if needed
+          ultrasoundVolume = parameterNode.GetNodeReference(scanName)
+          if not ultrasoundVolume:
+            ultrasoundFilename = os.path.join(parentDir, f"{scanName}.nrrd")
+            ultrasoundArray = nrrd.read(ultrasoundFilename)[0]
+            ultrasoundArrayFromIndices = np.zeros((len(indices), ultrasoundArray.shape[1], ultrasoundArray.shape[2]))
+            for i in range(len(indices)):
+              ultrasoundArrayFromIndices[i] = np.flip(ultrasoundArray[indices[i], :, :, 0], axis=0)
+            
+            # Convert to slicer volume
+            ultrasoundVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", scanName)
+            slicer.util.updateVolumeFromArray(ultrasoundVolume, ultrasoundArrayFromIndices)
+            parameterNode.SetNodeReferenceID(scanName, ultrasoundVolume.GetID())
+          
+          # Load segmentations
+          predictionArray = nrrd.read(volumeFile)[0]
+          predictionArrayFromIndices = np.zeros((len(indices), predictionArray.shape[1], predictionArray.shape[2]))
+          for i in range(len(indices)):
+            predictionArrayFromIndices[i] = np.flip(predictionArray[indices[i], :, :, 0], axis=0)
+          predictionVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", name)
+          slicer.util.updateVolumeFromArray(predictionVolume, predictionArrayFromIndices)
+          parameterNode.SetNodeReferenceID(name, predictionVolume.GetID())
+
+        else:
+          loadedVolume = slicer.util.loadVolume(volumeFile)
+          loadedVolume.SetName(name)
+          parameterNode.SetNodeReferenceID(name, loadedVolume.GetID())
 
       self.setScansAndModelsDict(scansAndModelsDict)
-    except Exception as e:
+    else:
       slicer.util.errorDisplay("Ensure volumes follow the naming convention: "
-                               "[patient_id]_[AI_model_name]_[sequence_name].nrrd: "+str(e))
-      import traceback
-      traceback.print_exc()
+                               "[patient_id]_[AI_model_name]_[sequence_name].nrrd")
 
   def setScansAndModelsDict(self, scansAndModelsDict):
     """
