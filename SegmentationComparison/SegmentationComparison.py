@@ -737,8 +737,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       volumeName = self.logic.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
       inputVolume = self._parameterNode.GetNodeReference(volumeName)
       if inputVolume is not None:
-        self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
-        self.logic.setSlicePredictionOpacity(1, thresholdPercentage)
+        if self._parameterNode.GetParameter(self.logic.INPUT_TYPE) == "3D":
+          self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+        else:
+          self.logic.setSlicePredictionOpacity(1, thresholdPercentage)
       else:
         logging.warning("Volume not found by reference: {}".format(volumeName))
     except Exception as e:
@@ -769,8 +771,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       volumeName = self.logic.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
       inputVolume = self._parameterNode.GetNodeReference(volumeName)
       if inputVolume is not None:
-        self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
-        self.logic.setSlicePredictionOpacity(2, thresholdPercentage)
+        if self._parameterNode.GetParameter(self.logic.INPUT_TYPE) == "3D":
+          self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+        else:
+          self.logic.setSlicePredictionOpacity(2, thresholdPercentage)
       else:
         logging.warning("Volume not found by reference: {}".format(volumeName))
     except Exception as e:
