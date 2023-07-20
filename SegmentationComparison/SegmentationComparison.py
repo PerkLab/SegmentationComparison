@@ -153,6 +153,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.comparisonResultsTable = None  # Only use this while importing saved scene from file!
     self.eloHistoryTable = None
+    self.lastLeftForegroundOpacity = 0
+    self.lastRightForegroundOpacity = 0
+
+    # Shortcuts
+    self.shortcutD = qt.QShortcut(slicer.util.mainWindow())
+    self.shortcutD.setKey(qt.QKeySequence("d"))
 
   def setup(self):
     """
@@ -247,6 +253,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.comparisonCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
     self.ui.settingsCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
 
+    self.ui.toggleOverlayPushButton.connect("clicked()", self.onOverlayToggled)
     self.ui.resetCameraButton.connect('clicked()', self.onResetCameraButton)
     self.ui.resetCameraButton.setIconSize(qt.QSize(self.ICON_SIZE_MID, self.ICON_SIZE_MID))
     self.ui.leftBetterButton.connect('clicked()', self.onLeftBetterClicked)
@@ -467,8 +474,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     settings = slicer.app.userSettings()
     if checked != 0:
       settings.setValue(self.logic.SHOW_IDS_SETTING, "true")
+      settings.setValue(self.logic.SHOW_SLICE_ANNOTATIONS_SETTING, 1)
     else:
       settings.setValue(self.logic.SHOW_IDS_SETTING, "false")
+      settings.setValue(self.logic.SHOW_SLICE_ANNOTATIONS_SETTING, 0)
     self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
   def onInputsCollapsed(self, collapsed):
@@ -480,10 +489,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.ui.inputsCollapsibleButton.collapsed = True
 
   def onInputTypeChanged(self, button):
+    layoutManager = slicer.app.layoutManager()
     if button == self.ui.threeDRadioButton:
       self._parameterNode.SetParameter(self.logic.INPUT_TYPE, "3D")
 
-      slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_3D)
+      layoutManager.setLayout(self.LAYOUT_DUAL_3D)
       viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
       viewNode1.SetOrientationMarkerType(viewNode1.OrientationMarkerTypeHuman)
       viewNode1.SetOrientationMarkerSize(viewNode1.OrientationMarkerSizeSmall)
@@ -491,9 +501,23 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
       viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
       viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
+
+      self.ui.toggleOverlayPushButton.enabled = False
+      self.disconnectKeyboardShortcut()
     else:
       self._parameterNode.SetParameter(self.logic.INPUT_TYPE, "2D")
-      slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
+
+      # Prevent user from changing slices in 2D views
+      layoutManager.setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
+      for i in range(1, 3):
+        for j in range(1, 7):
+          sliceName = str(i) + str(j)
+          interactorStyle = layoutManager.sliceWidget(sliceName).sliceView().sliceViewInteractorStyle()
+          interactorStyle.SetActionEnabled(interactorStyle.BrowseSlice, False)
+      
+      # Enable overlay toggle
+      self.ui.toggleOverlayPushButton.enabled = True
+      self.connectKeyboardShortcut()
 
   # set the output directory to the input directory as a default
   def onInputVolumeDirectorySelected(self, selectedPath):
@@ -557,6 +581,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
     else:
       slicer.app.layoutManager().setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
+      self.connectKeyboardShortcut()
 
   def exit(self):
     """
@@ -566,6 +591,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.removeObserver(
       self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
     slicer.util.setDataProbeVisible(True)
+    self.disconnectKeyboardShortcut()
 
   def onSceneStartClose(self, caller, event):
     """
@@ -681,6 +707,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self._parameterNode.SetParameter(self.logic.LINK_OPACITIES, str(self.ui.linkThresholdsButton.checked))
 
     self._parameterNode.EndModify(wasModified)
+  
+  def connectKeyboardShortcut(self):
+    self.shortcutD.connect("activated()", self.onOverlayToggled)
+
+  def disconnectKeyboardShortcut(self):
+    if self.shortcutD:
+      self.shortcutD.activated.disconnect()
 
   # Threshold the selected volume(s)
   def onLeftSliderChanged(self, value):
@@ -705,6 +738,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       inputVolume = self._parameterNode.GetNodeReference(volumeName)
       if inputVolume is not None:
         self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+        self.logic.setSlicePredictionOpacity(1, thresholdPercentage)
       else:
         logging.warning("Volume not found by reference: {}".format(volumeName))
     except Exception as e:
@@ -736,6 +770,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       inputVolume = self._parameterNode.GetNodeReference(volumeName)
       if inputVolume is not None:
         self.logic.setVolumeOpacityThreshold(inputVolume, thresholdPercentage)
+        self.logic.setSlicePredictionOpacity(2, thresholdPercentage)
       else:
         logging.warning("Volume not found by reference: {}".format(volumeName))
     except Exception as e:
@@ -765,6 +800,28 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     if toggled:
       self.ui.rightThresholdSlider.value = self.ui.leftThresholdSlider.value
+  
+  def onOverlayToggled(self):
+    leftOpacityCurrent = self.ui.leftThresholdSlider.value
+    rightOpacityCurrent = self.ui.rightThresholdSlider.value
+
+    if leftOpacityCurrent == 0 and rightOpacityCurrent == 0:
+      # Bring back sliders to previous values
+      self.ui.leftThresholdSlider.value = self.lastLeftForegroundOpacity
+      self.ui.rightThresholdSlider.value = self.lastRightForegroundOpacity
+    elif leftOpacityCurrent > 0 and rightOpacityCurrent == 0:
+      # Hide left side
+      self.lastLeftForegroundOpacity = leftOpacityCurrent
+      self.ui.leftThresholdSlider.value = 0
+    elif rightOpacityCurrent > 0 and leftOpacityCurrent == 0:
+      # Hide right side
+      self.lastRightForegroundOpacity = rightOpacityCurrent
+      self.ui.rightThresholdSlider.value = 0
+    else:
+      self.lastLeftForegroundOpacity = leftOpacityCurrent
+      self.lastRightForegroundOpacity = rightOpacityCurrent
+      self.ui.leftThresholdSlider.value = 0
+      self.ui.rightThresholdSlider.value = 0
 
   def onLoadButton(self):
     """
@@ -933,9 +990,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   WINDOW = 50
   IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
+  NUM_SLICES_PER_MODEL = 6
 
   SHOW_IDS_SETTING = "SegmentationComparison/ShowVolumeIds"
   SHOW_IDS_DEFAULT = False
+  SHOW_SLICE_ANNOTATIONS_SETTING = "DataProbe/sliceViewAnnotations.bottomLeft"  # for some reason, enabled doesn't work
+  SHOW_SLICE_ANNOTATIONS_DEFAULT = 0
   CAMERA_FOV_SETTING = "SegmentationComparison/CameraFov"
   CAMERA_FOV_DEFAULT = 1800
 
@@ -1242,6 +1302,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
             predictionArrayFromIndices[i] = np.flip(predictionArray[indices[i], :, :, 0], axis=0)
           predictionVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", name)
           slicer.util.updateVolumeFromArray(predictionVolume, predictionArrayFromIndices)
+          predictionVolume.CreateDefaultDisplayNodes()
+          predictionDisplayNode = predictionVolume.GetDisplayNode()
+          predictionDisplayNode.SetAndObserveColorNodeID("vtkMRMLColorTableNodeGreen")
           parameterNode.SetNodeReferenceID(name, predictionVolume.GetID())
 
         else:
@@ -1582,17 +1645,18 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     parameterNode = self.getParameterNode()
     nextPair = self.getNextPair()
 
-    volumeRenderingLogic = slicer.modules.volumerendering.logic()
+    if parameterNode.GetParameter(self.INPUT_TYPE) == "3D":
+      volumeRenderingLogic = slicer.modules.volumerendering.logic()
 
-    volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
-    volumeNode1 = parameterNode.GetNodeReference(volumeName1)
-    displayNode1 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode1)
-    displayNode1.SetVisibility(False)
+      volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
+      volumeNode1 = parameterNode.GetNodeReference(volumeName1)
+      displayNode1 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode1)
+      displayNode1.SetVisibility(False)
 
-    volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
-    volumeNode2 = parameterNode.GetNodeReference(volumeName2)
-    displayNode2 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode2)
-    displayNode2.SetVisibility(False)
+      volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
+      volumeNode2 = parameterNode.GetNodeReference(volumeName2)
+      displayNode2 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode2)
+      displayNode2.SetVisibility(False)
 
   def prepareDisplay(self, leftThreshold, rightThreshold):
     """
@@ -1602,6 +1666,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     :returns: None
     """
     parameterNode = self.getParameterNode()
+    inputType = parameterNode.GetParameter(self.INPUT_TYPE)
 
     # Prevent errors from previous or next buttons when the volumes haven't been loaded in yet
 
@@ -1613,30 +1678,54 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     slicer.app.setRenderPaused(True)
 
+    if inputType == "2D":
+      # Set ultrasound frames as background in all slices
+      scanNode = parameterNode.GetNodeReference(nextPair[0])
+      slicer.util.setSliceViewerLayers(background=scanNode, fit=True)
+
+    layoutManager = slicer.app.layoutManager()
+
     # Set up left side view
 
     volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
     volumeNode1 = parameterNode.GetNodeReference(volumeName1)
-    viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
-    viewNode1.LinkedControlOn()
-    volumeDisplayNode1 = self.setVolumeRenderingProperty(volumeNode1, self.WINDOW, leftThreshold)
-    volumeDisplayNode1.SetViewNodeIDs([viewNode1.GetID()])
-    volumeDisplayNode1.SetVisibility(True)
-    self.centerAndRotateCamera(volumeNode1, viewNode1)
+    if inputType == "3D":
+      viewNode1 = slicer.mrmlScene.GetSingletonNode("1", "vtkMRMLViewNode")
+      viewNode1.LinkedControlOn()
+      volumeDisplayNode1 = self.setVolumeRenderingProperty(volumeNode1, self.WINDOW, leftThreshold)
+      volumeDisplayNode1.SetViewNodeIDs([viewNode1.GetID()])
+      volumeDisplayNode1.SetVisibility(True)
+      self.centerAndRotateCamera(volumeNode1, viewNode1)
+    else:
+      for i in range(self.NUM_SLICES_PER_MODEL):
+        sliceTag = "1" + str(i + 1)
+        sliceWidget = layoutManager.sliceWidget(sliceTag)
+        sliceViewer = sliceWidget.mrmlSliceCompositeNode()
+        sliceViewer.SetForegroundVolumeID(volumeNode1.GetID())
+        sliceViewer.SetForegroundOpacity(leftThreshold / self.IMAGE_INTENSITY_MAX)
+        sliceWidget.sliceLogic().SetSliceOffset(i)
 
     # Set up right side view
 
     volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
     volumeNode2 = parameterNode.GetNodeReference(volumeName2)
-    viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
-    viewNode2.LinkedControlOn()
-    volumeDisplayNode2 = self.setVolumeRenderingProperty(volumeNode2, self.WINDOW, rightThreshold)
-    volumeDisplayNode2.SetViewNodeIDs([viewNode2.GetID()])
-    volumeDisplayNode2.SetVisibility(True)
-    self.centerAndRotateCamera(volumeNode2, viewNode2)
+    if inputType == "3D":
+      viewNode2 = slicer.mrmlScene.GetSingletonNode("2", "vtkMRMLViewNode")
+      viewNode2.LinkedControlOn()
+      volumeDisplayNode2 = self.setVolumeRenderingProperty(volumeNode2, self.WINDOW, rightThreshold)
+      volumeDisplayNode2.SetViewNodeIDs([viewNode2.GetID()])
+      volumeDisplayNode2.SetVisibility(True)
+      self.centerAndRotateCamera(volumeNode2, viewNode2)
+    else:
+      for i in range(self.NUM_SLICES_PER_MODEL):
+        sliceTag = "2" + str(i + 1)
+        sliceWidget = layoutManager.sliceWidget(sliceTag)
+        sliceViewer = sliceWidget.mrmlSliceCompositeNode()
+        sliceViewer.SetForegroundVolumeID(volumeNode2.GetID())
+        sliceViewer.SetForegroundOpacity(rightThreshold / self.IMAGE_INTENSITY_MAX)
+        sliceWidget.sliceLogic().SetSliceOffset(i)
 
     # Show volume IDs in views if setting is on
-
     showIds = slicer.util.settingsValue(self.SHOW_IDS_SETTING, False, converter=slicer.util.toBool)
 
     layoutManager = slicer.app.layoutManager()
@@ -1668,6 +1757,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
     viewWidget1.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
     viewWidget2.threeDView().cornerAnnotation().GetTextProperty().SetColor(1, 1, 1)
+  
+    # Show/hide slice view annotations
+    showSliceAnnotations = slicer.util.settingsValue(self.SHOW_SLICE_ANNOTATIONS_SETTING, self.SHOW_SLICE_ANNOTATIONS_DEFAULT, converter=int)
+    sliceAnnotations = slicer.modules.DataProbeInstance.infoWidget.sliceAnnotations
+    sliceAnnotations.bottomLeft = showSliceAnnotations
+    sliceAnnotations.updateSliceViewFromGUI()
 
     slicer.app.setRenderPaused(False)
 
@@ -1682,7 +1777,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     surveyTable.SetCellText(rowIdx, 1, namesVolumesToDisplay[0])
     surveyTable.SetCellText(rowIdx, 2, str(leftScore))
     surveyTable.SetCellText(rowIdx, 3, namesVolumesToDisplay[1])
-    surveyTable.SetCellText(rowIdx, 4, str(1.0-leftScore))
+    surveyTable.SetCellText(rowIdx, 4, str(1.0 - leftScore))
 
   def setVolumeOpacityThreshold(self, inputVolume, imageThresholdPercent):
     """
@@ -1702,6 +1797,15 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     displayNode = self.setVolumeRenderingProperty(inputVolume, window, level)
     if not displayNode:
       logging.error("Could not set up volume rendering property!")
+  
+  def setSlicePredictionOpacity(self, side, imageThresholdPercent):
+    layoutManager = slicer.app.layoutManager()
+    for i in range(self.NUM_SLICES_PER_MODEL):
+      sliceTag = str(side) + str(i + 1)
+      sliceWidget = layoutManager.sliceWidget(sliceTag)
+      sliceViewer = sliceWidget.mrmlSliceCompositeNode()
+      sliceViewer.SetForegroundOpacity(imageThresholdPercent / 100)
+
 
 #
 # SegmentationComparisonTest
