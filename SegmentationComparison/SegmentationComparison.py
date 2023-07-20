@@ -810,13 +810,11 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.ui.leftThresholdSlider.value = self.lastLeftForegroundOpacity
       self.ui.rightThresholdSlider.value = self.lastRightForegroundOpacity
     elif leftOpacityCurrent > 0 and rightOpacityCurrent == 0:
-      # Hide left side
-      self.lastLeftForegroundOpacity = leftOpacityCurrent
-      self.ui.leftThresholdSlider.value = 0
+      # Show right side
+      self.ui.rightThresholdSlider.value = self.lastRightForegroundOpacity
     elif rightOpacityCurrent > 0 and leftOpacityCurrent == 0:
-      # Hide right side
-      self.lastRightForegroundOpacity = rightOpacityCurrent
-      self.ui.rightThresholdSlider.value = 0
+      # Show left side
+      self.ui.leftThresholdSlider.value = self.lastLeftForegroundOpacity
     else:
       self.lastLeftForegroundOpacity = leftOpacityCurrent
       self.lastRightForegroundOpacity = rightOpacityCurrent
