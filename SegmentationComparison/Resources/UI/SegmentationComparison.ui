@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>469</width>
-    <height>702</height>
+    <height>808</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -540,14 +540,14 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="label_6">
         <property name="text">
          <string>Default view FOV: </string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="3" column="1">
        <widget class="QSpinBox" name="fovSpinBox">
         <property name="minimum">
          <number>200</number>
@@ -560,10 +560,33 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
+      <item row="4" column="0" colspan="2">
        <widget class="QPushButton" name="resetSettingsButton">
         <property name="text">
          <string>Reset settings</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_11">
+        <property name="text">
+         <string>Matching tolerance (Elo score):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QSpinBox" name="matchingToleranceSpinBox">
+        <property name="toolTip">
+         <string>Standard deviation of Elo scores when pairing AI models for comparison</string>
+        </property>
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>500</number>
+        </property>
+        <property name="value">
+         <number>80</number>
         </property>
        </widget>
       </item>

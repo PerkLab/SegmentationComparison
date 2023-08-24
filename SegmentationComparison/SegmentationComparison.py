@@ -293,6 +293,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.displayIdCheckBox.checked = showIds
     self.ui.displayIdCheckBox.connect("stateChanged(int)", self.onDisplayIdChecked)
 
+    self.ui.matchingToleranceSpinBox.connect("valueChanged(int)", self.onMatchingToleranceValueChanged)
+
     fov = slicer.util.settingsValue(self.logic.CAMERA_FOV_SETTING, self.logic.CAMERA_FOV_DEFAULT, converter=int)
     self.ui.fovSpinBox.value = fov
     self.ui.fovSpinBox.connect("valueChanged(int)", self.onFovValueChanged)
@@ -686,6 +688,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     rightSliderValue = self.logic.getParameter(self.logic.RIGHT_OPACITY_THRESHOLD) * self.THRESHOLD_SLIDER_RESOLUTION
     self.ui.rightThresholdSlider.value = rightSliderValue
     self.ui.linkThresholdsButton.checked = self.logic.getParameter(self.logic.LINK_OPACITIES)
+    self.ui.matchingToleranceSpinBox.value = self.logic.getParameter(self.logic.MATCHING_TOLERANCE)
 
     self._updatingGUIFromParameterNode = False
 
@@ -705,6 +708,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     rightSlicerParameterValue = self.ui.rightThresholdSlider.value / self.THRESHOLD_SLIDER_RESOLUTION
     self._parameterNode.SetParameter(self.logic.RIGHT_OPACITY_THRESHOLD, str(rightSlicerParameterValue))
     self._parameterNode.SetParameter(self.logic.LINK_OPACITIES, str(self.ui.linkThresholdsButton.checked))
+    self._parameterNode.SetParameter(self.logic.MATCHING_TOLERANCE, str(self.ui.matchingToleranceSpinBox.value))
 
     self._parameterNode.EndModify(wasModified)
   
@@ -898,6 +902,9 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         waitDialog.hide()
         waitDialog.deleteLater()
 
+  def onMatchingToleranceValueChanged(self, value):
+    self.logic.setParameter(self.logic.MATCHING_TOLERANCE, value)
+
   def onResetCameraButton(self):
     logging.info("onResetCameraButton()")
     self.ui.leftThresholdSlider.value = self.THRESHOLD_SLIDER_MIDDLE_VALUE
@@ -917,10 +924,12 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.logic.hideCurrentVolumes()  # Hide current pair before selecting new pair
 
-    self.logic.setNextPair(self.logic.getPairFromSurveyTable())
+    #todo: Ask Chris why this was here. getPairFromSurveyTable always returns None, becuase it always tries to read the line after the last line
+    # self.logic.setNextPair(self.logic.getPairFromSurveyTable())
+    # if not self.logic.getNextPair():
+    #   self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
 
-    if not self.logic.getNextPair():
-      self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
+    self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
 
     self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
 
@@ -1012,6 +1021,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   SCANS_AND_MODELS_DICT = "ScansAndModelsDict"  # dict[modelName][scanName] = N serialized with json. N = number of games played.
   SURVEY_DATAFRAME = "SurveyDataFrame"
   NEXT_PAIR = "NextPair"  # list[volumeName, AiModelName1, AiModelName2]
+  MATCHING_TOLERANCE = "MatchingTolerance"
 
 
   def __init__(self):
@@ -1039,6 +1049,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     
     if not parameterNode.GetParameter(self.INPUT_TYPE):
       parameterNode.SetParameter(self.INPUT_TYPE, "3D")
+
+    if not parameterNode.GetParameter(self.MATCHING_TOLERANCE):
+      parameterNode.SetParameter(self.MATCHING_TOLERANCE, "80")
 
   def setSurveyHistory(self, comparisonHistoryPath):
     """
@@ -1388,6 +1401,11 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     surveyDF.at[leftModelIdx, "Elo"] = leftNewElo
     surveyDF.at[rightModelIdx, "Elo"] = rightNewElo
 
+    logMessage = "Updates:    "
+    logMessage += f"{leftModel} ({leftElo:.2f}) vs {rightModel} ({rightElo:.2f}) -> "
+    logMessage += f"{leftModel} ({leftNewElo:.2f}) vs {rightModel} ({rightNewElo:.2f})"
+    logging.debug(logMessage)
+
     # Increment games played for each model/scan and update last time played
     scansAndModelsDict = self.getScansAndModelsDict()
 
@@ -1441,20 +1459,32 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
         leastModel = surveyDF.query(f"TimeLastPlayed == '{minGamesDF['TimeLastPlayed'].min()}'").iloc[0]["ModelName"]
         nextModelPair.append(leastModel)
 
-      # Sample list of models with probability based on elo difference
+      # Create a copy of surveyDF but without the leastModel in it
+      surveyDF_noLeast = surveyDF[surveyDF["ModelName"] != leastModel]
+
+      # Compute Elo differences between leastModel and all other models
       leastModelElo = surveyDF.query(f"ModelName == '{leastModel}'").iloc[0]["Elo"]
-      eloDiffList = (surveyDF["Elo"] - leastModelElo).abs().tolist()
-      if all(eloDiff == 0 for eloDiff in eloDiffList):
+      eloDiffList_noLeast = (surveyDF_noLeast["Elo"] - leastModelElo).abs().tolist()
+
+      if all(eloDiff == 0 for eloDiff in eloDiffList_noLeast):
         validModel = False
         while not validModel:
-          chosenModelIdx = rng.integers(0, len(eloDiffList))
-          if surveyDF.iloc[chosenModelIdx]["ModelName"] != leastModel:
+          chosenModelIdx = rng.integers(0, len(eloDiffList_noLeast))
+          if surveyDF_noLeast.iloc[chosenModelIdx]["ModelName"] != leastModel:
             validModel = True
       else:
-        samplingWeights = self.getModelSamplingProbability(eloDiffList)
-        chosenModelIdx = random.choices(list(enumerate(eloDiffList)), weights=samplingWeights)[0][0]
-      closestEloModel = surveyDF.iloc[chosenModelIdx]["ModelName"]
+        samplingWeights = self.getModelSamplingProbability(eloDiffList_noLeast)
+        chosenModelIdx = random.choices(list(enumerate(eloDiffList_noLeast)), weights=samplingWeights)[0][0]
+      closestEloModel = surveyDF_noLeast.iloc[chosenModelIdx]["ModelName"]
       nextModelPair.append(closestEloModel)
+
+      # Log the names and Elo scores of the next matchup
+      logMessage = "Next matchup:"
+      for model in nextModelPair:
+        modelIdx = surveyDF.index[surveyDF["ModelName"] == model][0]
+        logMessage = logMessage + (f"    Model: {model}, Elo: {surveyDF.at[modelIdx, 'Elo']}")
+
+      logging.debug(logMessage)
 
     # Choose scan with least number of games
     minDictList = []
@@ -1520,17 +1550,20 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       valueStr = parameterNode.GetParameter(parameterName)
       return True if valueStr.lower() == "true" else False
 
+    elif parameterName == self.MATCHING_TOLERANCE:
+      valueStr = parameterNode.GetParameter(parameterName)
+      return int(valueStr)
+
     else:
       logging.warning("Cannot find parameter name: {}".format(parameterName))
       return
 
   def getModelSamplingProbability(self, eloDiffList):
+    SIGMA = self.getParameter(self.MATCHING_TOLERANCE)
     probs = []
     for eloDiff in eloDiffList:
-      if eloDiff == 0:
-        probs.append(0)
-      else:
-        probs.append(math.exp(-self.EXP_SCALING_FACTOR * eloDiff))
+      probability = math.exp(-eloDiff ** 2 / (2 * SIGMA ** 2))
+      probs.append(probability)
     return probs
 
   def getTotalComparisonCount(self):
@@ -1547,8 +1580,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   def getPairFromSurveyTable(self):
     surveyTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
     totalComparisonCount = surveyTable.GetNumberOfRows()
-    leftScanName = surveyTable.GetCellText(totalComparisonCount, self.LEFT_MODEL_COL - 1)
-    rightScanName = surveyTable.GetCellText(totalComparisonCount, self.RIGHT_MODEL_COL - 1)
+    leftScanName = surveyTable.GetCellText(totalComparisonCount - 1, self.LEFT_MODEL_COL - 1)
+    rightScanName = surveyTable.GetCellText(totalComparisonCount - 1, self.RIGHT_MODEL_COL - 1)
     if leftScanName == "" and rightScanName == "":
       return
     leftModelName = leftScanName.split("_")[1]
