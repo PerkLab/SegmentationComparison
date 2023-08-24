@@ -924,11 +924,6 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     self.logic.hideCurrentVolumes()  # Hide current pair before selecting new pair
 
-    #todo: Ask Chris why this was here. getPairFromSurveyTable always returns None, becuase it always tries to read the line after the last line
-    # self.logic.setNextPair(self.logic.getPairFromSurveyTable())
-    # if not self.logic.getNextPair():
-    #   self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
-
     self.logic.updateNextPair(self.ui.csvPathSelector.currentPath == "")
 
     self.logic.prepareDisplay(self.ui.leftThresholdSlider.value, self.ui.rightThresholdSlider.value)
