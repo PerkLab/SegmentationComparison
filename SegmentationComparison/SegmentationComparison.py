@@ -1572,18 +1572,6 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     else:
       return 0
 
-  def getPairFromSurveyTable(self):
-    surveyTable = self.getParameterNode().GetNodeReference(self.SURVEY_RESULTS_TABLE)
-    totalComparisonCount = surveyTable.GetNumberOfRows()
-    leftScanName = surveyTable.GetCellText(totalComparisonCount - 1, self.LEFT_MODEL_COL - 1)
-    rightScanName = surveyTable.GetCellText(totalComparisonCount - 1, self.RIGHT_MODEL_COL - 1)
-    if leftScanName == "" and rightScanName == "":
-      return
-    leftModelName = leftScanName.split("_")[1]
-    rightModelName = rightScanName.split("_")[1]
-    scanName = leftScanName.split("_")[0] + "_" + leftScanName.split("_")[2]
-    return [scanName, leftModelName, rightModelName]
-
   def centerAndRotateCamera(self, volume, viewNode):
     """
     Center camera of viewNode on volume specified.
