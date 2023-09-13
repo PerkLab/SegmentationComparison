@@ -1,3 +1,4 @@
+import io
 import os
 import glob
 import unittest
@@ -299,6 +300,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.fovSpinBox.value = fov
     self.ui.fovSpinBox.connect("valueChanged(int)", self.onFovValueChanged)
 
+    self.ui.flip2DPushButton.connect("toggled(bool)", self.onFlip2DClicked)
     self.ui.resetSettingsButton.connect("clicked()", self.onResetSettingsClicked)
 
     # Make sure parameter node is initialized (needed for module reload)
@@ -904,6 +906,31 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
   def onMatchingToleranceValueChanged(self, value):
     self.logic.setParameter(self.logic.MATCHING_TOLERANCE, value)
+  
+  def onFlip2DClicked(self, toggled):
+    resliceDriverLogic = slicer.modules.volumereslicedriver.logic()
+    layoutManager = slicer.app.layoutManager()
+
+    # Iterate through each slice view and flip the slice orientation
+    for i in range(2):
+      for j in range(self.logic.NUM_SLICES_PER_MODEL):
+        sliceTag = str(i + 1) + str(j + 1)
+        sliceWidget = layoutManager.sliceWidget(sliceTag)
+        sliceNode = sliceWidget.mrmlSliceNode()
+
+        # Set current volume as driver for reslice
+        volumeNode = sliceWidget.mrmlSliceCompositeNode().GetBackgroundVolumeID()
+        resliceDriverLogic.SetDriverForSlice(volumeNode, sliceNode)
+        resliceDriverLogic.SetModeForSlice(resliceDriverLogic.MODE_AXIAL, sliceNode)
+        resliceDriverLogic.SetFlipForSlice(toggled, sliceNode)
+
+    # Reset slice offset
+    for i in range(2):
+      for j in range(self.logic.NUM_SLICES_PER_MODEL):
+        sliceTag = str(i + 1) + str(j + 1)
+        sliceWidget = layoutManager.sliceWidget(sliceTag)
+        offset = j if toggled else -j
+        sliceWidget.sliceLogic().SetSliceOffset(offset)
 
   def onResetCameraButton(self):
     logging.info("onResetCameraButton()")
@@ -1189,7 +1216,8 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     :return: pandas dataframe
     """
     parameterNode = self.getParameterNode()
-    surveyDF = pd.read_json(parameterNode.GetParameter(self.SURVEY_DATAFRAME))
+    surveyDFString = io.StringIO(parameterNode.GetParameter(self.SURVEY_DATAFRAME))
+    surveyDF = pd.read_json(surveyDFString)
     surveyDF["TimeLastPlayed"] = pd.to_datetime(surveyDF["TimeLastPlayed"]).dt.tz_localize(None)
     return surveyDF
 
