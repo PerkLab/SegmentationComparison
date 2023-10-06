@@ -990,7 +990,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         eloHistoryFilename = self.ui.outputDirectorySelector.directory + "/elo_history_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
         slicer.util.saveNode(eloHistoryTable, eloHistoryFilename)
 
-        # Save pandas dataframe to csv
+        # Save pandas to csv
         resultsSavePath = self.ui.outputDirectorySelector.directory + "/elo_scores_" + time.strftime("%Y%m%d-%H%M%S") + ".csv"
         self.logic.getSurveyTable().to_csv(resultsSavePath, index=False)
 
@@ -1192,9 +1192,9 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       # Create new dataframe with each row being one model
       data = {
         "ModelName": scansAndModelsDict.keys(),
-        "Elo": self.DEFAULT_ELO,
-        "GamesPlayed": 0,
-        "TimeLastPlayed": None
+        "Elo": pd.Series([self.DEFAULT_ELO] * len(scansAndModelsDict.keys()), dtype="float"),
+        "GamesPlayed": pd.Series([0] * len(scansAndModelsDict.keys()), dtype="int"),
+        "TimeLastPlayed": pd.Series([None] * len(scansAndModelsDict.keys()))
       }
       surveyDF = pd.DataFrame(data)
       surveyDF["TimeLastPlayed"] = pd.to_datetime(surveyDF["TimeLastPlayed"])
