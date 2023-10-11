@@ -342,118 +342,25 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     # Dual layout with 6 2D slices in each
     dual2dLayout = \
-      """
+    """
       <layout type="horizontal">
         <item>
-          <layout type="vertical">
-            <item>
-              <layout type="horizontal">
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="11">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">11</property>
-                    <property name="viewcolor" action="default">#F34A33</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="12">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">12</property>
-                    <property name="viewcolor" action="default">#F34A33</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="13">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">13</property>
-                    <property name="viewcolor" action="default">#F34A33</property>
-                  </view>
-                </item>
-              </layout>
-            </item>
-            <item>
-              <layout type="horizontal">
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="14">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">14</property>
-                    <property name="viewcolor" action="default">#F34A33</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="15">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">15</property>
-                    <property name="viewcolor" action="default">#F34A33</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="16">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">16</property>
-                    <property name="viewcolor" action="default">#F34A33</property>
-                  </view>
-                </item>
-              </layout>
-            </item>
-          </layout>
+          <view class="vtkMRMLSliceNode" singletontag="1">
+            <property name="orientation" action="default">Axial</property>
+            <property name="viewlabel" action="default">1</property>
+            <property name="viewcolor" action="default">#F34A33</property>
+          </view>
         </item>
         <item>
-          <layout type="vertical">
-            <item>
-              <layout type="horizontal">
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="21">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">21</property>
-                    <property name="viewcolor" action="default">#6EB14B</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="22">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">22</property>
-                    <property name="viewcolor" action="default">#6EB14B</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="23">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">23</property>
-                    <property name="viewcolor" action="default">#6EB14B</property>
-                  </view>
-                </item>
-              </layout>
-            </item>
-            <item>
-              <layout type="horizontal">
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="24">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">24</property>
-                    <property name="viewcolor" action="default">#6EB14B</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="25">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">25</property>
-                    <property name="viewcolor" action="default">#6EB14B</property>
-                  </view>
-                </item>
-                <item>
-                  <view class="vtkMRMLSliceNode" singletontag="26">
-                    <property name="orientation" action="default">Axial</property>
-                    <property name="viewlabel" action="default">26</property>
-                    <property name="viewcolor" action="default">#6EB14B</property>
-                  </view>
-                </item>
-              </layout>
-            </item>
-          </layout>
+          <view class="vtkMRMLSliceNode" singletontag="2">
+            <property name="orientation" action="default">Axial</property>
+            <property name="viewlabel" action="default">2</property>
+            <property name="viewcolor" action="default">#6EB14B</property>
+          </view>
         </item>
       </layout>
       """
+
     if not layoutLogic.GetLayoutNode().SetLayoutDescription(self.LAYOUT_DUAL_MULTIPLE_2D, dual2dLayout):
       layoutLogic.GetLayoutNode().AddLayoutDescription(self.LAYOUT_DUAL_MULTIPLE_2D, dual2dLayout)
 
@@ -510,14 +417,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       self.disconnectKeyboardShortcut()
     else:
       self._parameterNode.SetParameter(self.logic.INPUT_TYPE, "2D")
-
-      # Prevent user from changing slices in 2D views
       layoutManager.setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
-      for i in range(1, 3):
-        for j in range(1, 7):
-          sliceName = str(i) + str(j)
-          interactorStyle = layoutManager.sliceWidget(sliceName).sliceView().sliceViewInteractorStyle()
-          interactorStyle.SetActionEnabled(interactorStyle.BrowseSlice, False)
       
       # Enable overlay toggle
       self.ui.toggleOverlayPushButton.enabled = True
@@ -891,6 +791,10 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
         self.ui.inputsCollapsibleButton.collapsed = True
         self.ui.comparisonCollapsibleButton.collapsed = False
 
+        # Hide overlay by default
+        if self.ui.twoDRadioButton.checked:
+          self.onOverlayToggled()
+
       except Exception as e:
         qt.QApplication.restoreOverrideCursor()
 
@@ -911,26 +815,23 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     resliceDriverLogic = slicer.modules.volumereslicedriver.logic()
     layoutManager = slicer.app.layoutManager()
 
-    # Iterate through each slice view and flip the slice orientation
-    for i in range(2):
-      for j in range(self.logic.NUM_SLICES_PER_MODEL):
-        sliceTag = str(i + 1) + str(j + 1)
-        sliceWidget = layoutManager.sliceWidget(sliceTag)
-        sliceNode = sliceWidget.mrmlSliceNode()
+    # Flip slice view for left side
+    sliceWidget = layoutManager.sliceWidget("1")
+    sliceNode = sliceWidget.mrmlSliceNode()
 
-        # Set current volume as driver for reslice
-        volumeNode = sliceWidget.mrmlSliceCompositeNode().GetBackgroundVolumeID()
-        resliceDriverLogic.SetDriverForSlice(volumeNode, sliceNode)
-        resliceDriverLogic.SetModeForSlice(resliceDriverLogic.MODE_AXIAL, sliceNode)
-        resliceDriverLogic.SetFlipForSlice(toggled, sliceNode)
+    # Set current volume as driver for reslice
+    volumeNodeID = sliceWidget.mrmlSliceCompositeNode().GetBackgroundVolumeID()
+    resliceDriverLogic.SetDriverForSlice(volumeNodeID, sliceNode)
+    resliceDriverLogic.SetModeForSlice(resliceDriverLogic.MODE_AXIAL, sliceNode)
+    resliceDriverLogic.SetFlipForSlice(toggled, sliceNode)
 
-    # Reset slice offset
-    for i in range(2):
-      for j in range(self.logic.NUM_SLICES_PER_MODEL):
-        sliceTag = str(i + 1) + str(j + 1)
-        sliceWidget = layoutManager.sliceWidget(sliceTag)
-        offset = j if toggled else -j
-        sliceWidget.sliceLogic().SetSliceOffset(offset)
+    # Right side
+    sliceWidget = layoutManager.sliceWidget("2")
+    sliceNode = sliceWidget.mrmlSliceNode()
+    volumeNodeID = sliceWidget.mrmlSliceCompositeNode().GetBackgroundVolumeID()
+    resliceDriverLogic.SetDriverForSlice(volumeNodeID, sliceNode)
+    resliceDriverLogic.SetModeForSlice(resliceDriverLogic.MODE_AXIAL, sliceNode)
+    resliceDriverLogic.SetFlipForSlice(toggled, sliceNode)    
 
   def onResetCameraButton(self):
     logging.info("onResetCameraButton()")
@@ -1023,7 +924,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
 
   WINDOW = 50
   IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
-  NUM_SLICES_PER_MODEL = 6
+  DEFAULT_THRESHOLD = 127
+  DEFAULT_SMOOTH = 15
+  DEFAULT_DECIMATE = 0.25
+  MODEL_SUFFIX = "_model"
 
   SHOW_IDS_SETTING = "SegmentationComparison/ShowVolumeIds"
   SHOW_IDS_DEFAULT = False
@@ -1326,7 +1230,12 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
             ultrasoundArray = nrrd.read(ultrasoundFilename)[0]
             ultrasoundArrayFromIndices = np.zeros((len(indices), ultrasoundArray.shape[1], ultrasoundArray.shape[2]))
             for i in range(len(indices)):
-              ultrasoundArrayFromIndices[i] = np.flip(ultrasoundArray[indices[i], :, :, 0], axis=0)
+              ultrasoundArrayFromIndices[i] = ultrasoundArray[indices[i], :, :, 0]
+            
+            # For some reason, the first frame is not shown in surface models, so we add a blank frame
+            ultrasoundArrayFromIndices = np.insert(
+              ultrasoundArrayFromIndices, 0, np.zeros((ultrasoundArray.shape[1], ultrasoundArray.shape[2])), axis=0
+            )
             
             # Convert to slicer volume
             ultrasoundVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", scanName)
@@ -1337,13 +1246,51 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
           predictionArray = nrrd.read(volumeFile)[0]
           predictionArrayFromIndices = np.zeros((len(indices), predictionArray.shape[1], predictionArray.shape[2]))
           for i in range(len(indices)):
-            predictionArrayFromIndices[i] = np.flip(predictionArray[indices[i], :, :, 0], axis=0)
+            predictionArrayFromIndices[i] = predictionArray[indices[i], :, :, 0]
+          predictionArrayFromIndices = np.insert(
+            predictionArrayFromIndices, 0, np.zeros((predictionArray.shape[1], predictionArray.shape[2])), axis=0
+          )
           predictionVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode", name)
           slicer.util.updateVolumeFromArray(predictionVolume, predictionArrayFromIndices)
           predictionVolume.CreateDefaultDisplayNodes()
           predictionDisplayNode = predictionVolume.GetDisplayNode()
           predictionDisplayNode.SetAndObserveColorNodeID("vtkMRMLColorTableNodeGreen")
           parameterNode.SetNodeReferenceID(name, predictionVolume.GetID())
+
+          # Create model for contour visibility
+          predictionModelName = name + self.MODEL_SUFFIX
+          model = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode", predictionModelName)
+          model.CreateDefaultDisplayNodes()
+          modelDisplayNode = model.GetDisplayNode()
+          modelDisplayNode.SetColor(0, 1, 0)
+          modelDisplayNode.SetVisibility3D(False)
+          modelDisplayNode.SetVisibility2D(False)
+          modelDisplayNode.SetSliceIntersectionThickness(2)
+          parameterNode.SetNodeReferenceID(predictionModelName, model.GetID())
+
+          # Create surface model from volume
+          parameters = {
+              "InputVolume": predictionVolume.GetID(),
+              "OutputGeometry": model.GetID(),
+              "Threshold": self.DEFAULT_THRESHOLD,
+              "Smooth": self.DEFAULT_SMOOTH,
+              "Decimate": self.DEFAULT_DECIMATE,
+              "SplitNormals": True,
+              "PointNormals": True
+          }
+          modelMaker = slicer.modules.grayscalemodelmaker
+
+          # Run the CLI
+          cliNode = slicer.cli.runSync(modelMaker, None, parameters)
+
+          # Process results
+          if cliNode.GetStatus() & cliNode.ErrorsMask:
+              # error
+              errorText = cliNode.GetErrorText()
+              slicer.mrmlScene.RemoveNode(cliNode)
+              raise ValueError("CLI execution failed: " + errorText)
+          # success
+          slicer.mrmlScene.RemoveNode(cliNode)
 
         else:
           loadedVolume = slicer.util.loadVolume(volumeFile)
@@ -1690,19 +1637,29 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     """
     parameterNode = self.getParameterNode()
     nextPair = self.getNextPair()
+    volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
+    volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
 
     if parameterNode.GetParameter(self.INPUT_TYPE) == "3D":
       volumeRenderingLogic = slicer.modules.volumerendering.logic()
 
-      volumeName1 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
       volumeNode1 = parameterNode.GetNodeReference(volumeName1)
       displayNode1 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode1)
       displayNode1.SetVisibility(False)
 
-      volumeName2 = self.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
       volumeNode2 = parameterNode.GetNodeReference(volumeName2)
       displayNode2 = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode2)
       displayNode2.SetVisibility(False)
+    else:
+      modelNode1 = parameterNode.GetNodeReference(volumeName1 + self.MODEL_SUFFIX)
+      modelDisplayNode1 = modelNode1.GetDisplayNode()
+      modelDisplayNode1.SetVisibility2D(False)
+      modelDisplayNode1.RemoveAllViewNodeIDs()
+
+      modelNode2 = parameterNode.GetNodeReference(volumeName2 + self.MODEL_SUFFIX)
+      modelDisplayNode2 = modelNode2.GetDisplayNode()
+      modelDisplayNode2.SetVisibility2D(False)
+      modelDisplayNode2.RemoveAllViewNodeIDs()
 
   def prepareDisplay(self, leftThreshold, rightThreshold):
     """
@@ -1720,6 +1677,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
     if not scansAndModelsDict:
       logging.warning("Volumes not loaded yet")
       return
+
     nextPair = self.getNextPair()
 
     slicer.app.setRenderPaused(True)
@@ -1743,13 +1701,18 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       volumeDisplayNode1.SetVisibility(True)
       self.centerAndRotateCamera(volumeNode1, viewNode1)
     else:
-      for i in range(self.NUM_SLICES_PER_MODEL):
-        sliceTag = "1" + str(i + 1)
-        sliceWidget = layoutManager.sliceWidget(sliceTag)
-        sliceViewer = sliceWidget.mrmlSliceCompositeNode()
-        sliceViewer.SetForegroundVolumeID(volumeNode1.GetID())
-        sliceViewer.SetForegroundOpacity(leftThreshold / self.IMAGE_INTENSITY_MAX)
-        sliceWidget.sliceLogic().SetSliceOffset(i)
+      sliceWidget = layoutManager.sliceWidget("1")
+      sliceWidget.mrmlSliceCompositeNode().SetLinkedControl(True)
+      sliceWidget.sliceController().setCompositingToAdd()
+      sliceViewer = sliceWidget.mrmlSliceCompositeNode()
+      sliceViewer.SetForegroundVolumeID(volumeNode1.GetID())
+      sliceViewer.SetForegroundOpacity(leftThreshold / self.IMAGE_INTENSITY_MAX)
+      sliceWidget.sliceLogic().SetSliceOffset(1)  # Start at second frame since first is blank
+      sliceNode = sliceWidget.mrmlSliceNode()
+      modelNode1 = parameterNode.GetNodeReference(volumeName1 + self.MODEL_SUFFIX)
+      modelDisplayNode1 = modelNode1.GetDisplayNode()
+      modelDisplayNode1.AddViewNodeID(sliceNode.GetID())
+      modelDisplayNode1.SetVisibility2D(True)
 
     # Set up right side view
 
@@ -1763,13 +1726,18 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       volumeDisplayNode2.SetVisibility(True)
       self.centerAndRotateCamera(volumeNode2, viewNode2)
     else:
-      for i in range(self.NUM_SLICES_PER_MODEL):
-        sliceTag = "2" + str(i + 1)
-        sliceWidget = layoutManager.sliceWidget(sliceTag)
-        sliceViewer = sliceWidget.mrmlSliceCompositeNode()
-        sliceViewer.SetForegroundVolumeID(volumeNode2.GetID())
-        sliceViewer.SetForegroundOpacity(rightThreshold / self.IMAGE_INTENSITY_MAX)
-        sliceWidget.sliceLogic().SetSliceOffset(i)
+      sliceWidget = layoutManager.sliceWidget("2")
+      sliceWidget.mrmlSliceCompositeNode().SetLinkedControl(True)
+      sliceWidget.sliceController().setCompositingToAdd()
+      sliceViewer = sliceWidget.mrmlSliceCompositeNode()
+      sliceViewer.SetForegroundVolumeID(volumeNode2.GetID())
+      sliceViewer.SetForegroundOpacity(rightThreshold / self.IMAGE_INTENSITY_MAX)
+      sliceWidget.sliceLogic().SetSliceOffset(1)
+      sliceNode = sliceWidget.mrmlSliceNode()
+      modelNode2 = parameterNode.GetNodeReference(volumeName2 + self.MODEL_SUFFIX)
+      modelDisplayNode2 = modelNode2.GetDisplayNode()
+      modelDisplayNode2.AddViewNodeID(sliceNode.GetID())
+      modelDisplayNode2.SetVisibility2D(True)
 
     # Show volume IDs in views if setting is on
     showIds = slicer.util.settingsValue(self.SHOW_IDS_SETTING, False, converter=slicer.util.toBool)
@@ -1846,11 +1814,10 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   
   def setSlicePredictionOpacity(self, side, imageThresholdPercent):
     layoutManager = slicer.app.layoutManager()
-    for i in range(self.NUM_SLICES_PER_MODEL):
-      sliceTag = str(side) + str(i + 1)
-      sliceWidget = layoutManager.sliceWidget(sliceTag)
-      sliceViewer = sliceWidget.mrmlSliceCompositeNode()
-      sliceViewer.SetForegroundOpacity(imageThresholdPercent / 100)
+    sliceTag = str(side)
+    sliceWidget = layoutManager.sliceWidget(sliceTag)
+    sliceViewer = sliceWidget.mrmlSliceCompositeNode()
+    sliceViewer.SetForegroundOpacity(imageThresholdPercent / 100)
 
 
 #
