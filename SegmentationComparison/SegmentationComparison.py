@@ -925,7 +925,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   WINDOW = 50
   IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
   DEFAULT_THRESHOLD = 127
-  DEFAULT_SMOOTH = 15
+  DEFAULT_SMOOTH = 20
   DEFAULT_DECIMATE = 0.25
   MODEL_SUFFIX = "_model"
 
@@ -1457,13 +1457,15 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
       logging.debug(logMessage)
 
     # Choose scan with least number of games
-    minDictList = []
     scansAndModelsDict = self.getScansAndModelsDict()
-    for model in nextModelPair:
-      modelScans = scansAndModelsDict[model].items()
-      # workaround to issue of scan getting picked when not the least played
-      minDictList.append(min(random.sample(modelScans, len(modelScans)), key=lambda x: x[1]))
-    minScan = min(minDictList, key=lambda x: x[1])[0]
+    scanNames = [scanName for scanName in scansAndModelsDict[nextModelPair[0]]]
+    scanCounts = {key: None for key in scanNames}
+    # Sum number of games for each scan across all models
+    for scanName in scanNames:
+      scanCounts[scanName] = sum(model[scanName] for model in scansAndModelsDict.values())
+    minGames = min(scanCounts.values())
+    minKeys = [key for key, value in scanCounts.items() if value == minGames]
+    minScan = random.choice(minKeys)  # Randomize order in the case of ties
     nextModelPair.insert(0, minScan)
     self.setNextPair(nextModelPair)
 
