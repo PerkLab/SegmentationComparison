@@ -160,6 +160,8 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     # Shortcuts
     self.shortcutD = qt.QShortcut(slicer.util.mainWindow())
     self.shortcutD.setKey(qt.QKeySequence("d"))
+    self.shortcutF = qt.QShortcut(slicer.util.mainWindow())
+    self.shortcutF.setKey(qt.QKeySequence("f"))
 
   def setup(self):
     """
@@ -254,6 +256,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
     self.ui.comparisonCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
     self.ui.settingsCollapsibleButton.setIconSize(qt.QSize(self.ICON_SIZE, self.ICON_SIZE))
 
+    self.ui.toggleContourButton.connect("clicked()", self.onContourToggled)
     self.ui.toggleOverlayPushButton.connect("clicked()", self.onOverlayToggled)
     self.ui.resetCameraButton.connect('clicked()', self.onResetCameraButton)
     self.ui.resetCameraButton.setIconSize(qt.QSize(self.ICON_SIZE_MID, self.ICON_SIZE_MID))
@@ -413,6 +416,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       viewNode2.SetOrientationMarkerType(viewNode2.OrientationMarkerTypeHuman)
       viewNode2.SetOrientationMarkerSize(viewNode2.OrientationMarkerSizeSmall)
 
+      self.ui.toggleContourButton.enabled = False
       self.ui.toggleOverlayPushButton.enabled = False
       self.disconnectKeyboardShortcut()
     else:
@@ -420,6 +424,7 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
       layoutManager.setLayout(self.LAYOUT_DUAL_MULTIPLE_2D)
       
       # Enable overlay toggle
+      self.ui.toggleContourButton.enabled = True
       self.ui.toggleOverlayPushButton.enabled = True
       self.connectKeyboardShortcut()
 
@@ -616,10 +621,13 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
   
   def connectKeyboardShortcut(self):
     self.shortcutD.connect("activated()", self.onOverlayToggled)
+    self.shortcutF.connect("activated()", self.onContourToggled)
 
   def disconnectKeyboardShortcut(self):
     if self.shortcutD:
       self.shortcutD.activated.disconnect()
+    if self.shortcutF:
+      self.shortcutF.activated.disconnect()
 
   # Threshold the selected volume(s)
   def onLeftSliderChanged(self, value):
@@ -710,6 +718,31 @@ class SegmentationComparisonWidget(ScriptedLoadableModuleWidget, VTKObservationM
 
     if toggled:
       self.ui.rightThresholdSlider.value = self.ui.leftThresholdSlider.value
+  
+  def onContourToggled(self):
+    parameterNode = self._parameterNode
+    if self._parameterNode.GetParameter(self.logic.INPUT_TYPE) == "3D":
+      return
+    
+    nextPair = self.logic.getNextPair()
+
+    # Left side
+    volumeName1 = self.logic.nameFromPatientSequenceAndModel(nextPair[0], nextPair[1])
+    modelNode1 = parameterNode.GetNodeReference(volumeName1 + self.logic.MODEL_SUFFIX)
+    modelDisplayNode1 = modelNode1.GetDisplayNode()
+
+    # Right side
+    volumeName2 = self.logic.nameFromPatientSequenceAndModel(nextPair[0], nextPair[2])
+    modelNode2 = parameterNode.GetNodeReference(volumeName2 + self.logic.MODEL_SUFFIX)
+    modelDisplayNode2 = modelNode2.GetDisplayNode()
+
+    # Only check left side to ensure consistency
+    if modelDisplayNode1.GetVisibility2D():
+      modelDisplayNode1.SetVisibility2D(False)
+      modelDisplayNode2.SetVisibility2D(False)
+    else:
+      modelDisplayNode1.SetVisibility2D(True)
+      modelDisplayNode2.SetVisibility2D(True)
   
   def onOverlayToggled(self):
     leftOpacityCurrent = self.ui.leftThresholdSlider.value
@@ -925,7 +958,7 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
   WINDOW = 50
   IMAGE_INTENSITY_MAX = 310  # Some bug causes images to have values beyond 255. Once that is fixed, this can be set to 255.
   DEFAULT_THRESHOLD = 127
-  DEFAULT_SMOOTH = 20
+  DEFAULT_SMOOTH = 15
   DEFAULT_DECIMATE = 0.25
   MODEL_SUFFIX = "_model"
 
