@@ -1325,6 +1325,15 @@ class SegmentationComparisonLogic(ScriptedLoadableModuleLogic):
           # success
           slicer.mrmlScene.RemoveNode(cliNode)
 
+          # Extract largest portion
+          connectivityFilter = vtk.vtkPolyDataConnectivityFilter()
+          connectivityFilter.SetInputData(model.GetPolyData())
+          connectivityFilter.SetExtractionModeToLargestRegion()
+
+          # Clean up model
+          cleanFilter = vtk.vtkCleanPolyData()
+          cleanFilter.SetInputConnection(connectivityFilter.GetOutputPort())
+
         else:
           loadedVolume = slicer.util.loadVolume(volumeFile)
           loadedVolume.SetName(name)
